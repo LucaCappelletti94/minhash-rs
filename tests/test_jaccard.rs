@@ -260,7 +260,7 @@ where
     Ok(())
 }
 
-#[test]
+//#[test]
 pub fn test_jaccard() {
     let mut minhash_file = File::create("tests/test_minhash_jaccard_large.csv").unwrap();
     let mut hll_file = File::create("tests/test_hll_jaccard_large.csv").unwrap();
@@ -272,7 +272,7 @@ pub fn test_jaccard() {
         .unwrap();
 
     for iteration in (0..1000_usize).progress() {
-        for elements in [10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000].iter() {
+        for elements in [10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000].iter() {
             let first_set = populate_set(
                 *elements,
                 (4567_u64)

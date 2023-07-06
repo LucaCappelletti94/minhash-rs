@@ -2,6 +2,18 @@
 name = "minhash-rs"
 version = "0.1.0"
 edition = "2021"
+authors = ["Luca Cappelletti <cappelletti.luca94@gmail.com>"]
+description = "A Rust implementation of MinHash trying to be parsimonious with memory."
+homepage = "https://github.com/LucaCappelletti94/minhash-rs"
+repository = "https://github.com/LucaCappelletti94/minhash-rs"
+readme = "README.md"
+license = "MIT"
+keywords = ["minhash", "probabilistic", "algorithm", "cardinality", "estimation",]
+categories = [
+    "no-std",
+    "algorithms",
+    "science"
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

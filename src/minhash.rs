@@ -5,7 +5,7 @@
 use crate::{
     prelude::{Min, Primitive},
     splitmix::SplitMix,
-    xorshift::XorShift,
+    xorshift::XorShift, zero::Zero,
 };
 use core::hash::{Hash, Hasher};
 use siphasher::sip::SipHasher13;
@@ -53,16 +53,57 @@ impl<Word: Maximal, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
     }
 }
 
-impl<Word: Min + XorShift + Copy + Eq, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS>
+impl<Word: Min + XorShift + Copy + Eq + Maximal + Zero, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS>
 where
     u64: Primitive<Word>,
 {
+    /// Returns whether the MinHash is empty.
+    pub fn is_empty(&self) -> bool {
+        self.iter().all(|word| *word == Word::maximal())
+    }
+
+    /// Returns whether the MinHash is fully saturated.
+    pub fn is_full(&self) -> bool {
+        self.iter().all(|word| *word == Word::zero())
+    }
+
+    /// Returns whether the MinHash may contain the provided value.
+    /// 
+    /// # Arguments
+    /// * `value` - The value to check.
+    /// 
+    /// # Implementative details
+    /// The procedure estimates whether the provided value is contained
+    /// in the current MinHash data structure by checking whether all of
+    /// the words are smaller or equal to all of the hash values that
+    /// are calculated using the provided value as seed.
+    
+
     /// Insert a value into the MinHash.
     ///
     /// # Arguments
     /// * `value` - The value to insert.
     ///
+    /// # Examples
+    /// In the following example we show how we can
+    /// create a MinHash and insert a value in it.
+    /// 
     pub fn insert<H: Hash>(&mut self, value: H) {
+        // Create a new hasher.
+        let mut hasher = SipHasher13::new();
+        // Calculate the hash.
+        value.hash(&mut hasher);
+        let mut hash: Word = hasher.finish().splitmix().convert();
+
+        // Iterate over the words.
+        for word in self.iter_mut() {
+            // SplitMix the hash.
+            hash = hash.xorshift();
+            word.set_min(hash);
+        }
+    }
+
+    pub fn iter_<H: Hash>(&mut self, value: H) {
         // Create a new hasher.
         let mut hasher = SipHasher13::new();
         // Calculate the hash.

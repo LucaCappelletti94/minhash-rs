@@ -34,7 +34,7 @@ impl Primitive<u8> for u16 {
 
 impl Primitive<u16> for u16 {
     fn convert(self) -> u16 {
-        self as u16
+        self
     }
 }
 
@@ -64,7 +64,7 @@ impl Primitive<u16> for u32 {
 
 impl Primitive<u32> for u32 {
     fn convert(self) -> u32 {
-        self as u32
+        self
     }
 }
 
@@ -94,7 +94,7 @@ impl Primitive<u32> for u64 {
 
 impl Primitive<u64> for u64 {
     fn convert(self) -> u64 {
-        self as u64
+        self
     }
 }
 

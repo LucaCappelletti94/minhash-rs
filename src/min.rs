@@ -11,7 +11,7 @@ impl Min for usize {
     }
 
     fn is_min(&self, other: Self) -> bool {
-        *self < other
+        *self <= other
     }
 }
 
@@ -21,7 +21,7 @@ impl Min for u128 {
     }
 
     fn is_min(&self, other: Self) -> bool {
-        *self < other
+        *self <= other
     }
 }
 
@@ -31,7 +31,7 @@ impl Min for u64 {
     }
 
     fn is_min(&self, other: Self) -> bool {
-        *self < other
+        *self <= other
     }
 }
 
@@ -41,7 +41,7 @@ impl Min for u32 {
     }
 
     fn is_min(&self, other: Self) -> bool {
-        *self < other
+        *self <= other
     }
 }
 
@@ -51,7 +51,7 @@ impl Min for u16 {
     }
 
     fn is_min(&self, other: Self) -> bool {
-        *self < other
+        *self <= other
     }
 }
 
@@ -61,6 +61,6 @@ impl Min for u8 {
     }
 
     fn is_min(&self, other: Self) -> bool {
-        *self < other
+        *self <= other
     }
 }

@@ -16,7 +16,11 @@ where
     /// use minhash_rs::prelude::*;
     ///
     /// let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
-    /// let minhash = MinHash::<u64, 128>::from_iter(data);
+    /// let minhash = MinHash::<u64, 128>::from_iter(data.clone());
+    /// 
+    /// for item in data {
+    ///     assert!(minhash.may_contain_value(item));
+    /// }
     ///
     /// ```
     fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {

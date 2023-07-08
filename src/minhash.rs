@@ -1,17 +1,14 @@
 //! Module providing the MinHash data structure.
-//!
-//!
 
 use crate::{
+    atomic::IterHashes,
     prelude::{Min, Primitive},
-    splitmix::SplitMix,
     xorshift::XorShift,
     zero::Zero,
 };
-use core::hash::{Hash, Hasher};
+use core::hash::Hash;
 use core::ops::Index;
 use core::ops::IndexMut;
-use siphasher::sip::SipHasher13;
 
 use crate::prelude::Maximal;
 
@@ -103,6 +100,7 @@ where
 
 impl<Word: Min + XorShift + Copy + Eq, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS>
 where
+    Self: IterHashes<Word, PERMUTATIONS>,
     u64: Primitive<Word>,
 {
     /// Returns whether the MinHash may contain the provided value.
@@ -160,21 +158,6 @@ where
         for (word, hash) in self.iter_mut().zip(Self::iter_hashes_from_value(value)) {
             word.set_min(hash);
         }
-    }
-
-    /// Iterate on the hashes from the provided value.
-    pub fn iter_hashes_from_value<H: Hash>(value: H) -> impl Iterator<Item = Word> {
-        // Create a new hasher.
-        let mut hasher = SipHasher13::new();
-        // Calculate the hash.
-        value.hash(&mut hasher);
-        let mut hash: Word = hasher.finish().splitmix().convert();
-
-        // Iterate over the words.
-        (0..PERMUTATIONS).map(move |_| {
-            hash = hash.xorshift();
-            hash
-        })
     }
 }
 

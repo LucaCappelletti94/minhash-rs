@@ -1,5 +1,18 @@
+//! Module proving implementations of the XorShift algorithm for several words.
+//! 
+//! # What is XorShift?
+//! XorShift is a fast, non-cryptographic, pseudo-random number generator.
+//! It is used in this crate to generate the permutations for the MinHash.
+
 pub trait XorShift {
+    /// Returns the next value in the xorshift sequence.
     fn xorshift(&mut self) -> Self;
+}
+
+impl XorShift for usize {
+    fn xorshift(&mut self) -> Self {
+        (*self as u64).xorshift() as usize
+    }
 }
 
 impl XorShift for u64 {

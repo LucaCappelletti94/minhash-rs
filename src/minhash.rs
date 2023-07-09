@@ -1,17 +1,14 @@
 //! Module providing the MinHash data structure.
-//!
-//!
 
 use crate::{
+    atomic::IterHashes,
     prelude::{Min, Primitive},
-    splitmix::SplitMix,
     xorshift::XorShift,
     zero::Zero,
 };
-use core::hash::{Hash, Hasher};
+use core::hash::Hash;
 use core::ops::Index;
 use core::ops::IndexMut;
-use siphasher::sip::SipHasher13;
 
 use crate::prelude::Maximal;
 
@@ -61,11 +58,41 @@ where
     u64: Primitive<Word>,
 {
     /// Returns whether the MinHash is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u8, 16>::new();
+    ///
+    /// assert!(minhash.is_empty());
+    /// minhash.insert(42);
+    /// assert!(!minhash.is_empty());
+    /// ```
+    ///
     pub fn is_empty(&self) -> bool {
         self.iter().all(|word| *word == Word::maximal())
     }
 
     /// Returns whether the MinHash is fully saturated.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u8, 16>::new();
+    ///
+    /// assert!(!minhash.is_full());
+    ///
+    /// for i in 0..1024 {
+    ///    minhash.insert(i);
+    /// }
+    ///
+    /// assert!(minhash.is_full());
+    /// ```
+    ///
     pub fn is_full(&self) -> bool {
         self.iter().all(|word| *word == Word::zero())
     }
@@ -73,6 +100,7 @@ where
 
 impl<Word: Min + XorShift + Copy + Eq, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS>
 where
+    Self: IterHashes<Word, PERMUTATIONS>,
     u64: Primitive<Word>,
 {
     /// Returns whether the MinHash may contain the provided value.
@@ -86,11 +114,24 @@ where
     /// the words are smaller or equal to all of the hash values that
     /// are calculated using the provided value as seed.
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 128>::new();
+    ///
+    /// assert!(!minhash.may_contain_value(42));
+    /// minhash.insert(42);
+    /// assert!(minhash.may_contain_value(42));
+    /// minhash.insert(47);
+    /// assert!(minhash.may_contain_value(47));
+    /// ```
     ///
     pub fn may_contain_value<H: Hash>(&self, value: H) -> bool {
         self.iter()
             .zip(Self::iter_hashes_from_value(value))
-            .all(|(word, hash)| hash.is_min(*word))
+            .all(|(word, hash)| word.is_min(hash))
     }
 
     /// Insert a value into the MinHash.
@@ -102,25 +143,21 @@ where
     /// In the following example we show how we can
     /// create a MinHash and insert a value in it.
     ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 128>::new();
+    ///
+    /// assert!(!minhash.may_contain_value(42));
+    /// minhash.insert(42);
+    /// assert!(minhash.may_contain_value(42));
+    /// minhash.insert(47);
+    /// assert!(minhash.may_contain_value(47));
+    /// ```
     pub fn insert<H: Hash>(&mut self, value: H) {
         for (word, hash) in self.iter_mut().zip(Self::iter_hashes_from_value(value)) {
             word.set_min(hash);
         }
-    }
-
-    /// Iterate on the hashes from the provided value.
-    pub fn iter_hashes_from_value<H: Hash>(value: H) -> impl Iterator<Item = Word> {
-        // Create a new hasher.
-        let mut hasher = SipHasher13::new();
-        // Calculate the hash.
-        value.hash(&mut hasher);
-        let mut hash: Word = hasher.finish().splitmix().convert();
-
-        // Iterate over the words.
-        (0..PERMUTATIONS).map(move |_| {
-            hash = hash.xorshift();
-            hash
-        })
     }
 }
 
@@ -184,6 +221,28 @@ impl<Word: Eq, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
     /// # Arguments
     /// * `other` - The other MinHash to compare to.
     ///
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::collections::HashSet;
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let first_set: HashSet<u64> = [1_u64, 2_u64, 3_u64, 4_u64, 5_u64, 6_u64, 7_u64, 8_u64].iter().copied().collect();
+    /// let second_set: HashSet<u64> = [5_u64, 6_u64, 7_u64, 8_u64, 9_u64, 10_u64, 11_u64, 12_u64].iter().copied().collect();
+    ///
+    /// let mut first_minhash: MinHash<u64, 128> = first_set.iter().collect();
+    /// let mut second_minhash: MinHash<u64, 128> = second_set.iter().collect();
+    ///
+    /// let approximation = first_minhash.estimate_jaccard_index(&second_minhash);
+    /// let ground_truth = first_set.intersection(&second_set).count() as f64 / first_set.union(&second_set).count() as f64;
+    ///
+    /// assert!((approximation - ground_truth).abs() < 0.01, concat!(
+    ///     "We expected the approximation to be close to the ground truth, ",
+    ///    "but got an error of {} instead. The ground truth is {} and the approximation is {}."
+    ///    ), (approximation - ground_truth).abs(), ground_truth, approximation
+    /// );
+    /// ```
     pub fn estimate_jaccard_index(&self, other: &Self) -> f64 {
         self.iter()
             .zip(other.iter())

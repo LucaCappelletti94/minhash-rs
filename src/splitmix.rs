@@ -1,3 +1,8 @@
+//! Module for the SplitMix64 algorithm.
+//! 
+//! # What is SplitMix64?
+//! SplitMix64 is a fast, non-cryptographic, pseudo-random number generator.
+
 pub trait SplitMix {
     fn splitmix(self) -> Self;
 }

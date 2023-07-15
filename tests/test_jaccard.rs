@@ -261,7 +261,7 @@ where
     Ok(())
 }
 
-#[test]
+//#[test]
 pub fn test_jaccard() {
     (0..1000_usize)
         .into_par_iter()

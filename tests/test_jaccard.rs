@@ -11,8 +11,9 @@ use std::fs::File;
 use std::io::Write;
 
 use hyperloglog_rs::prelude::*;
-use indicatif::ProgressIterator;
+use indicatif::ParallelProgressIterator;
 use minhash_rs::prelude::*;
+use rayon::prelude::*;
 
 /// Return set with up to the provided number of elements.
 fn populate_set(elements: usize, mut random_state: u64) -> HashSet<u64> {
@@ -260,183 +261,212 @@ where
     Ok(())
 }
 
-//#[test]
+#[test]
 pub fn test_jaccard() {
-    let mut minhash_file = File::create("tests/test_minhash_jaccard_large.csv").unwrap();
-    let mut hll_file = File::create("tests/test_hll_jaccard_large.csv").unwrap();
-    minhash_file
-        .write_all(b"elements,permutations,word,memory,approximation,ground_truth,time\n")
-        .unwrap();
-    hll_file
-        .write_all(b"elements,precision,bits,memory,approximation,ground_truth,time\n")
-        .unwrap();
-
-    for iteration in (0..1000_usize).progress() {
-        for elements in [10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000].iter() {
-            let first_set = populate_set(
-                *elements,
-                (4567_u64)
-                    .wrapping_mul(*elements as u64 + 1)
-                    .wrapping_mul(iteration as u64 + 1),
+    (0..1000_usize)
+        .into_par_iter()
+        .progress()
+        .for_each(|iteration| {
+            let minhash_path = format!(
+                "tests/partial/test_minhash_jaccard_{iteration}.csv",
+                iteration = iteration
             );
-            let second_set = populate_set(
-                *elements,
-                (47325567_u64)
-                    .wrapping_mul(*elements as u64 + 1)
-                    .wrapping_mul(iteration as u64 + 1),
+            let hll_path = format!(
+                "tests/partial/test_hll_jaccard_{iteration}.csv",
+                iteration = iteration
             );
-            let real_jaccard = first_set.intersection(&second_set).count() as f64
-                / first_set.union(&second_set).count() as f64;
 
-            estimate_jaccard_index_hll::<Precision4>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+            // IF the file already exists, we skip the iteration.
+            if std::path::Path::new(&minhash_path).exists()
+                && std::path::Path::new(&hll_path).exists()
+            {
+                return;
+            }
 
-            estimate_jaccard_index_hll::<Precision5>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+            let mut minhash_file = File::create(minhash_path).unwrap();
+            let mut hll_file = File::create(hll_path).unwrap();
+            minhash_file
+                .write_all(b"elements,permutations,word,memory,approximation,ground_truth,time\n")
+                .unwrap();
+            hll_file
+                .write_all(b"elements,precision,bits,memory,approximation,ground_truth,time\n")
+                .unwrap();
+            for elements in [
+                10,
+                100,
+                1_000,
+                10_000,
+                100_000,
+                1_000_000,
+                10_000_000,
+                100_000_000,
+            ]
+            .iter()
+            {
+                let first_set = populate_set(
+                    *elements,
+                    (4567_u64)
+                        .wrapping_mul(*elements as u64 + 1)
+                        .wrapping_mul(iteration as u64 + 1),
+                );
+                let second_set = populate_set(
+                    *elements,
+                    (47325567_u64)
+                        .wrapping_mul(*elements as u64 + 1)
+                        .wrapping_mul(iteration as u64 + 1),
+                );
+                let real_jaccard = first_set.intersection(&second_set).count() as f64
+                    / first_set.union(&second_set).count() as f64;
 
-            estimate_jaccard_index_hll::<Precision6>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+                estimate_jaccard_index_hll::<Precision4>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
 
-            estimate_jaccard_index_hll::<Precision7>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+                estimate_jaccard_index_hll::<Precision5>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
 
-            estimate_jaccard_index_hll::<Precision8>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+                estimate_jaccard_index_hll::<Precision6>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
 
-            estimate_jaccard_index_hll::<Precision9>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+                estimate_jaccard_index_hll::<Precision7>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
 
-            estimate_jaccard_index_hll::<Precision10>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+                estimate_jaccard_index_hll::<Precision8>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
 
-            estimate_jaccard_index_hll::<Precision11>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+                estimate_jaccard_index_hll::<Precision9>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
 
-            estimate_jaccard_index_hll::<Precision12>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+                estimate_jaccard_index_hll::<Precision10>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
 
-            estimate_jaccard_index_hll::<Precision13>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+                estimate_jaccard_index_hll::<Precision11>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
 
-            estimate_jaccard_index_hll::<Precision14>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+                estimate_jaccard_index_hll::<Precision12>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
 
-            estimate_jaccard_index_hll::<Precision15>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+                estimate_jaccard_index_hll::<Precision13>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
 
-            estimate_jaccard_index_hll::<Precision16>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &hll_file,
-            )
-            .unwrap();
+                estimate_jaccard_index_hll::<Precision14>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
 
-            estimate_jaccard_index_minhash::<u8>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &minhash_file,
-            )
-            .unwrap();
-            estimate_jaccard_index_minhash::<u16>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &minhash_file,
-            )
-            .unwrap();
-            estimate_jaccard_index_minhash::<u32>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &minhash_file,
-            )
-            .unwrap();
-            estimate_jaccard_index_minhash::<u64>(
-                *elements,
-                &first_set,
-                &second_set,
-                real_jaccard,
-                &minhash_file,
-            )
-            .unwrap();
-        }
-    }
+                estimate_jaccard_index_hll::<Precision15>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
+
+                estimate_jaccard_index_hll::<Precision16>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &hll_file,
+                )
+                .unwrap();
+
+                estimate_jaccard_index_minhash::<u8>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &minhash_file,
+                )
+                .unwrap();
+                estimate_jaccard_index_minhash::<u16>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &minhash_file,
+                )
+                .unwrap();
+                estimate_jaccard_index_minhash::<u32>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &minhash_file,
+                )
+                .unwrap();
+                estimate_jaccard_index_minhash::<u64>(
+                    *elements,
+                    &first_set,
+                    &second_set,
+                    real_jaccard,
+                    &minhash_file,
+                )
+                .unwrap();
+            }
+        });
 }

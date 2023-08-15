@@ -26,7 +26,7 @@ serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_json = "1.0"
 rayon = "1.5"
 hyperloglog-rs = "0.1"
-indicatif = "0.17"
+indicatif = { version = "0.15", features = ["rayon"] }
 
 [profile.test]
 overflow-checks = true   # Disable integer overflow checks.

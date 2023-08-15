@@ -4,6 +4,7 @@ use core::{
     sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize},
 };
 
+use fnv::FnvHasher;
 use siphasher::sip128::SipHasher13;
 
 use crate::prelude::*;
@@ -65,13 +66,14 @@ where
     Word: Min + XorShift + Copy + Eq,
     u64: Primitive<Word>,
 {
-    /// Iterate on the hashes from the provided value.
+    /// Iterate on the hashes from the provided value and hasher.
     ///
     /// # Arguments
     /// * `value` - The value to hash.
-    fn iter_hashes_from_value<H: Hash>(value: H) -> impl Iterator<Item = Word> {
-        // Create a new hasher.
-        let mut hasher = SipHasher13::new();
+    fn iter_hashes_from_value<H: Hash, HS: Hasher>(
+        value: H,
+        mut hasher: HS,
+    ) -> impl Iterator<Item = Word> {
         // Calculate the hash.
         value.hash(&mut hasher);
         let mut hash: Word = hasher.finish().splitmix().splitmix().convert();
@@ -81,6 +83,103 @@ where
             hash = hash.xorshift();
             hash
         })
+    }
+
+    /// Iterate on the SipHasher13 hashes from the provided value.
+    ///
+    /// # Arguments
+    /// * `value` - The value to hash.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 128>::new();
+    ///
+    /// assert!(!minhash.may_contain_value_with_siphashes13(42));
+    /// minhash.insert_with_siphashes13(42);
+    /// assert!(minhash.may_contain_value_with_siphashes13(42));
+    /// minhash.insert_with_siphashes13(47);
+    /// assert!(minhash.may_contain_value_with_siphashes13(47));
+    /// ```
+    ///  
+    fn iter_siphashes13_from_value<H: Hash>(value: H) -> impl Iterator<Item = Word> {
+        Self::iter_hashes_from_value(value, SipHasher13::new())
+    }
+
+    /// Iterate on the keyed SipHasher13 hashes from the provided value.
+    ///
+    /// # Arguments
+    /// * `value` - The value to hash.
+    /// * `key0` - The first key.
+    /// * `key1` - The second key.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 128>::new();
+    /// let key0 = 0x0123456789ABCDEF;
+    /// let key1 = 0xFEDCBA9876543210;
+    ///
+    /// assert!(!minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1));
+    /// minhash.insert_with_keyed_siphashes13(42, key0, key1);
+    /// assert!(minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1));
+    /// minhash.insert_with_keyed_siphashes13(47, key0, key1);
+    /// assert!(minhash.may_contain_value_with_keyed_siphashes13(47, key0, key1));
+    /// ```
+    ///
+    fn iter_keyed_siphashes13_from_value<H: Hash>(
+        value: H,
+        key0: u64,
+        key1: u64,
+    ) -> impl Iterator<Item = Word> {
+        Self::iter_hashes_from_value(value, SipHasher13::new_with_keys(key0, key1))
+    }
+
+    /// Iterate on the FVN hashes from the provided value.
+    ///
+    /// # Arguments
+    /// * `value` - The value to hash.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 128>::new();
+    ///
+    /// assert!(!minhash.may_contain_value_with_fvn(42));
+    /// minhash.insert_with_fvn(42);
+    /// assert!(minhash.may_contain_value_with_fvn(42));
+    /// minhash.insert_with_fvn(47);
+    /// assert!(minhash.may_contain_value_with_fvn(47));
+    /// ```
+    ///  
+    fn iter_fvn_from_value<H: Hash>(value: H) -> impl Iterator<Item = Word> {
+        Self::iter_hashes_from_value(value, FnvHasher::default())
+    }
+
+    /// Iterate on the keyed SipHasher13 hashes from the provided value.
+    ///
+    /// # Arguments
+    /// * `value` - The value to hash.
+    /// * `key` - The first key.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 128>::new();
+    /// let key = 0x0123456789ABCDEF;
+    ///
+    /// assert!(!minhash.may_contain_value_with_keyed_fvn(42, key));
+    ///
+    fn iter_keyed_fvn_from_value<H: Hash>(value: H, key: u64) -> impl Iterator<Item = Word> {
+        Self::iter_hashes_from_value(value, FnvHasher::with_key(key))
     }
 }
 
@@ -104,7 +203,7 @@ where
         AtomicWord: 'a,
         Self: 'a;
 
-    /// Insert a value into the MinHash atomically.
+    /// Insert a value into the MinHash atomically, with SipHasher13.
     ///
     /// # Arguments
     /// * `value` - The value to insert.
@@ -116,27 +215,84 @@ where
     ///
     /// let mut minhash = MinHash::<u64, 4>::new();
     ///
-    /// assert!(!minhash.may_contain_value(42));
-    /// minhash.fetch_insert(42, core::sync::atomic::Ordering::Relaxed);
+    /// assert!(!minhash.may_contain_value_with_siphashes13(42));
+    /// minhash.fetch_insert_with_siphashes13(42, core::sync::atomic::Ordering::Relaxed);
     /// assert!(!minhash.is_empty());
     /// assert!(
-    ///     minhash.may_contain_value(42),
+    ///     minhash.may_contain_value_with_siphashes13(42),
     ///     concat!(
     ///         "The MinHash should contain the value 42, ",
     ///         "but it does not. The MinHash is: {:?}. ",
     ///         "The hashes associated to the value 42 are: {:?}."
     ///     ),
     ///     minhash,
-    ///     MinHash::<u64, 4>::iter_hashes_from_value(42).collect::<Vec<_>>()
+    ///     MinHash::<u64, 4>::iter_siphashes13_from_value(42).collect::<Vec<_>>()
     /// );
-    /// minhash.fetch_insert(47, core::sync::atomic::Ordering::Relaxed);
-    /// assert!(minhash.may_contain_value(47));
+    /// minhash.fetch_insert_with_siphashes13(47, core::sync::atomic::Ordering::Relaxed);
+    /// assert!(minhash.may_contain_value_with_siphashes13(47));
     ///
     /// ```
     ///
-    fn fetch_insert<H: Hash>(&self, value: H, ordering: core::sync::atomic::Ordering) {
+    fn fetch_insert_with_siphashes13<H: Hash>(
+        &self,
+        value: H,
+        ordering: core::sync::atomic::Ordering,
+    ) {
         // Iterate over the words.
-        for (word, hash) in self.iter_atomic().zip(Self::iter_hashes_from_value(value)) {
+        for (word, hash) in self
+            .iter_atomic()
+            .zip(Self::iter_siphashes13_from_value(value))
+        {
+            word.set_min(hash, ordering);
+        }
+    }
+
+    /// Insert a value into the MinHash atomically, with keyed SipHasher13.
+    ///
+    /// # Arguments
+    /// * `value` - The value to insert.
+    /// * `key0` - The first key.
+    /// * `key1` - The second key.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 4>::new();
+    /// let key0 = 0x0123456789ABCDEF;
+    /// let key1 = 0xFEDCBA9876543210;
+    ///
+    /// assert!(!minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1));
+    /// minhash.fetch_insert_with_keyed_siphashes13(42, key0, key1, core::sync::atomic::Ordering::Relaxed);
+    /// assert!(!minhash.is_empty());
+    /// assert!(
+    ///     minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1),
+    ///     concat!(
+    ///         "The MinHash should contain the value 42, ",
+    ///         "but it does not. The MinHash is: {:?}. ",
+    ///         "The hashes associated to the value 42 are: {:?}."
+    ///     ),
+    ///     minhash,
+    ///     MinHash::<u64, 4>::iter_keyed_siphashes13_from_value(42, key0, key1).collect::<Vec<_>>()
+    /// );
+    /// minhash.fetch_insert_with_keyed_siphashes13(47, key0, key1, core::sync::atomic::Ordering::Relaxed);
+    /// assert!(minhash.may_contain_value_with_keyed_siphashes13(47, key0, key1));
+    ///
+    /// ```
+    ///
+    fn fetch_insert_with_keyed_siphashes13<H: Hash>(
+        &self,
+        value: H,
+        key0: u64,
+        key1: u64,
+        ordering: core::sync::atomic::Ordering,
+    ) {
+        // Iterate over the words.
+        for (word, hash) in self
+            .iter_atomic()
+            .zip(Self::iter_keyed_siphashes13_from_value(value, key0, key1))
+        {
             word.set_min(hash, ordering);
         }
     }

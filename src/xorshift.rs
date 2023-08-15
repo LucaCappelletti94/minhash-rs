@@ -1,5 +1,5 @@
 //! Module proving implementations of the XorShift algorithm for several words.
-//! 
+//!
 //! # What is XorShift?
 //! XorShift is a fast, non-cryptographic, pseudo-random number generator.
 //! It is used in this crate to generate the permutations for the MinHash.

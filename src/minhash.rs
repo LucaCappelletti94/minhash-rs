@@ -67,7 +67,7 @@ where
     /// let mut minhash = MinHash::<u8, 16>::new();
     ///
     /// assert!(minhash.is_empty());
-    /// minhash.insert(42);
+    /// minhash.insert_with_siphashes13(42);
     /// assert!(!minhash.is_empty());
     /// ```
     ///
@@ -87,7 +87,7 @@ where
     /// assert!(!minhash.is_full());
     ///
     /// for i in 0..1024 {
-    ///    minhash.insert(i);
+    ///    minhash.insert_with_siphashes13(i);
     /// }
     ///
     /// assert!(minhash.is_full());
@@ -103,7 +103,7 @@ where
     Self: IterHashes<Word, PERMUTATIONS>,
     u64: Primitive<Word>,
 {
-    /// Returns whether the MinHash may contain the provided value.
+    /// Returns whether the MinHash may contain the provided value, using the SipHasher13.
     ///
     /// # Arguments
     /// * `value` - The value to check.
@@ -121,20 +121,20 @@ where
     ///
     /// let mut minhash = MinHash::<u64, 128>::new();
     ///
-    /// assert!(!minhash.may_contain_value(42));
-    /// minhash.insert(42);
-    /// assert!(minhash.may_contain_value(42));
-    /// minhash.insert(47);
-    /// assert!(minhash.may_contain_value(47));
+    /// assert!(!minhash.may_contain_value_with_siphashes13(42));
+    /// minhash.insert_with_siphashes13(42);
+    /// assert!(minhash.may_contain_value_with_siphashes13(42));
+    /// minhash.insert_with_siphashes13(47);
+    /// assert!(minhash.may_contain_value_with_siphashes13(47));
     /// ```
     ///
-    pub fn may_contain_value<H: Hash>(&self, value: H) -> bool {
+    pub fn may_contain_value_with_siphashes13<H: Hash>(&self, value: H) -> bool {
         self.iter()
-            .zip(Self::iter_hashes_from_value(value))
+            .zip(Self::iter_siphashes13_from_value(value))
             .all(|(word, hash)| word.is_min(hash))
     }
 
-    /// Insert a value into the MinHash.
+    /// Insert a value into the MinHash using the SipHasher13.
     ///
     /// # Arguments
     /// * `value` - The value to insert.
@@ -148,14 +148,211 @@ where
     ///
     /// let mut minhash = MinHash::<u64, 128>::new();
     ///
-    /// assert!(!minhash.may_contain_value(42));
-    /// minhash.insert(42);
-    /// assert!(minhash.may_contain_value(42));
-    /// minhash.insert(47);
-    /// assert!(minhash.may_contain_value(47));
+    /// assert!(!minhash.may_contain_value_with_siphashes13(42));
+    /// minhash.insert_with_siphashes13(42);
+    /// assert!(minhash.may_contain_value_with_siphashes13(42));
+    /// minhash.insert_with_siphashes13(47);
+    /// assert!(minhash.may_contain_value_with_siphashes13(47));
     /// ```
-    pub fn insert<H: Hash>(&mut self, value: H) {
-        for (word, hash) in self.iter_mut().zip(Self::iter_hashes_from_value(value)) {
+    pub fn insert_with_siphashes13<H: Hash>(&mut self, value: H) {
+        for (word, hash) in self
+            .iter_mut()
+            .zip(Self::iter_siphashes13_from_value(value))
+        {
+            word.set_min(hash);
+        }
+    }
+
+    /// Returns whether the MinHash may contain the provided value, using the keyed SipHasher13.
+    ///
+    /// # Arguments
+    /// * `value` - The value to check.
+    /// * `key0` - The first key.
+    /// * `key1` - The second key.
+    ///
+    /// # Implementative details
+    /// The procedure estimates whether the provided value is contained
+    /// in the current MinHash data structure by checking whether all of
+    /// the words are smaller or equal to all of the hash values that
+    /// are calculated using the provided value as seed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 128>::new();
+    /// let key0 = 0x0123456789ABCDEF;
+    /// let key1 = 0xFEDCBA9876543210;
+    ///
+    /// assert!(!minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1));
+    /// minhash.insert_with_keyed_siphashes13(42, key0, key1);
+    /// assert!(minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1));
+    /// minhash.insert_with_keyed_siphashes13(47, key0, key1);
+    /// assert!(minhash.may_contain_value_with_keyed_siphashes13(47, key0, key1));
+    /// ```
+    ///
+    pub fn may_contain_value_with_keyed_siphashes13<H: Hash>(
+        &self,
+        value: H,
+        key0: u64,
+        key1: u64,
+    ) -> bool {
+        self.iter()
+            .zip(Self::iter_keyed_siphashes13_from_value(value, key0, key1))
+            .all(|(word, hash)| word.is_min(hash))
+    }
+
+    /// Insert a value into the MinHash using the keyed SipHasher13.
+    ///
+    /// # Arguments
+    /// * `value` - The value to insert.
+    /// * `key0` - The first key.
+    /// * `key1` - The second key.
+    ///
+    /// # Examples
+    /// In the following example we show how we can
+    /// create a MinHash and insert a value in it.
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 128>::new();
+    /// let key0 = 0x0123456789ABCDEF;
+    /// let key1 = 0xFEDCBA9876543210;
+    ///
+    /// assert!(!minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1));
+    /// minhash.insert_with_keyed_siphashes13(42, key0, key1);
+    /// assert!(minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1));
+    /// minhash.insert_with_keyed_siphashes13(47, key0, key1);
+    /// assert!(minhash.may_contain_value_with_keyed_siphashes13(47, key0, key1));
+    /// ```
+    pub fn insert_with_keyed_siphashes13<H: Hash>(&mut self, value: H, key0: u64, key1: u64) {
+        for (word, hash) in self
+            .iter_mut()
+            .zip(Self::iter_keyed_siphashes13_from_value(value, key0, key1))
+        {
+            word.set_min(hash);
+        }
+    }
+
+    /// Returns whether the MinHash may contain the provided value, using the FVN.
+    ///
+    /// # Arguments
+    /// * `value` - The value to check.
+    ///
+    /// # Implementative details
+    /// The procedure estimates whether the provided value is contained
+    /// in the current MinHash data structure by checking whether all of
+    /// the words are smaller or equal to all of the hash values that
+    /// are calculated using the provided value as seed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 128>::new();
+    ///
+    /// assert!(!minhash.may_contain_value_with_fvn(42));
+    /// minhash.insert_with_fvn(42);
+    /// assert!(minhash.may_contain_value_with_fvn(42));
+    /// minhash.insert_with_fvn(47);
+    /// assert!(minhash.may_contain_value_with_fvn(47));
+    /// ```
+    ///
+    pub fn may_contain_value_with_fvn<H: Hash>(&self, value: H) -> bool {
+        self.iter()
+            .zip(Self::iter_fvn_from_value(value))
+            .all(|(word, hash)| word.is_min(hash))
+    }
+
+    /// Insert a value into the MinHash using the FVN.
+    ///
+    /// # Arguments
+    /// * `value` - The value to insert.
+    ///
+    /// # Examples
+    /// In the following example we show how we can
+    /// create a MinHash and insert a value in it.
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 128>::new();
+    ///
+    /// assert!(!minhash.may_contain_value_with_fvn(42));
+    /// minhash.insert_with_fvn(42);
+    /// assert!(minhash.may_contain_value_with_fvn(42));
+    /// minhash.insert_with_fvn(47);
+    /// assert!(minhash.may_contain_value_with_fvn(47));
+    /// ```
+    pub fn insert_with_fvn<H: Hash>(&mut self, value: H) {
+        for (word, hash) in self.iter_mut().zip(Self::iter_fvn_from_value(value)) {
+            word.set_min(hash);
+        }
+    }
+
+    /// Returns whether the MinHash may contain the provided value, using the keyed FVN.
+    ///
+    /// # Arguments
+    /// * `value` - The value to check.
+    /// * `key` - The first key.
+    ///
+    /// # Implementative details
+    /// The procedure estimates whether the provided value is contained
+    /// in the current MinHash data structure by checking whether all of
+    /// the words are smaller or equal to all of the hash values that
+    /// are calculated using the provided value as seed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 128>::new();
+    /// let key = 0x0123456789ABCDEF;
+    ///
+    /// assert!(!minhash.may_contain_value_with_keyed_fvn(42, key));
+    /// minhash.insert_with_keyed_fvn(42, key);
+    /// assert!(minhash.may_contain_value_with_keyed_fvn(42, key));
+    /// minhash.insert_with_keyed_fvn(47, key);
+    /// assert!(minhash.may_contain_value_with_keyed_fvn(47, key));
+    /// ```
+    ///
+    pub fn may_contain_value_with_keyed_fvn<H: Hash>(&self, value: H, key: u64) -> bool {
+        self.iter()
+            .zip(Self::iter_keyed_fvn_from_value(value, key))
+            .all(|(word, hash)| word.is_min(hash))
+    }
+
+    /// Insert a value into the MinHash using the keyed FVN.
+    ///
+    /// # Arguments
+    /// * `value` - The value to insert.
+    /// * `key` - The first key.
+    ///
+    /// # Examples
+    /// In the following example we show how we can
+    /// create a MinHash and insert a value in it.
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut minhash = MinHash::<u64, 128>::new();
+    /// let key = 0x0123456789ABCDEF;
+    ///
+    /// assert!(!minhash.may_contain_value_with_keyed_fvn(42, key));
+    /// minhash.insert_with_keyed_fvn(42, key);
+    /// assert!(minhash.may_contain_value_with_keyed_fvn(42, key));
+    /// minhash.insert_with_keyed_fvn(47, key);
+    /// assert!(minhash.may_contain_value_with_keyed_fvn(47, key));
+    /// ```
+    pub fn insert_with_keyed_fvn<H: Hash>(&mut self, value: H, key: u64) {
+        for (word, hash) in self
+            .iter_mut()
+            .zip(Self::iter_keyed_fvn_from_value(value, key))
+        {
             word.set_min(hash);
         }
     }

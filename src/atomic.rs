@@ -1,13 +1,37 @@
 use core::hash::{Hash, Hasher};
-use core::{
-    mem::transmute,
-    sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize},
-};
+use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize};
 
 use fnv::FnvHasher;
 use siphasher::sip128::SipHasher13;
 
 use crate::prelude::*;
+
+/// Generate `count` MinHash word hashes from `value` using the provided `hasher`.
+///
+/// This is shared by both the non-atomic [`IterHashes`] machinery and the
+/// atomic insertion path so that the two stay byte-for-byte compatible.
+fn iter_word_hashes<Word, H, HS>(
+    value: H,
+    mut hasher: HS,
+    count: usize,
+) -> impl Iterator<Item = Word>
+where
+    Word: XorShift + Copy,
+    u64: Primitive<Word>,
+    H: Hash,
+    HS: Hasher,
+{
+    // Calculate the hash.
+    value.hash(&mut hasher);
+    let mut hash: Word = hasher.finish().splitmix().splitmix().convert();
+
+    // Iterate over the words.
+    (0..count).map(move |_| {
+        hash = hash.xorshift();
+        hash
+    })
+}
 
 pub trait AtomicFetchMin {
     type Word;
@@ -18,13 +42,13 @@ pub trait AtomicFetchMin {
     /// * `value` - The value to set.
     /// * `ordering` - The ordering to use.
     ///
-    fn set_min(&self, value: Self::Word, ordering: core::sync::atomic::Ordering);
+    fn set_min(&self, value: Self::Word, ordering: Ordering);
 }
 
 impl AtomicFetchMin for AtomicU8 {
     type Word = u8;
 
-    fn set_min(&self, value: Self::Word, ordering: core::sync::atomic::Ordering) {
+    fn set_min(&self, value: Self::Word, ordering: Ordering) {
         self.fetch_min(value, ordering);
     }
 }
@@ -32,7 +56,7 @@ impl AtomicFetchMin for AtomicU8 {
 impl AtomicFetchMin for AtomicU16 {
     type Word = u16;
 
-    fn set_min(&self, value: Self::Word, ordering: core::sync::atomic::Ordering) {
+    fn set_min(&self, value: Self::Word, ordering: Ordering) {
         self.fetch_min(value, ordering);
     }
 }
@@ -40,7 +64,7 @@ impl AtomicFetchMin for AtomicU16 {
 impl AtomicFetchMin for AtomicU32 {
     type Word = u32;
 
-    fn set_min(&self, value: Self::Word, ordering: core::sync::atomic::Ordering) {
+    fn set_min(&self, value: Self::Word, ordering: Ordering) {
         self.fetch_min(value, ordering);
     }
 }
@@ -48,7 +72,7 @@ impl AtomicFetchMin for AtomicU32 {
 impl AtomicFetchMin for AtomicU64 {
     type Word = u64;
 
-    fn set_min(&self, value: Self::Word, ordering: core::sync::atomic::Ordering) {
+    fn set_min(&self, value: Self::Word, ordering: Ordering) {
         self.fetch_min(value, ordering);
     }
 }
@@ -56,7 +80,7 @@ impl AtomicFetchMin for AtomicU64 {
 impl AtomicFetchMin for AtomicUsize {
     type Word = usize;
 
-    fn set_min(&self, value: Self::Word, ordering: core::sync::atomic::Ordering) {
+    fn set_min(&self, value: Self::Word, ordering: Ordering) {
         self.fetch_min(value, ordering);
     }
 }
@@ -72,17 +96,9 @@ where
     /// * `value` - The value to hash.
     fn iter_hashes_from_value<H: Hash, HS: Hasher>(
         value: H,
-        mut hasher: HS,
+        hasher: HS,
     ) -> impl Iterator<Item = Word> {
-        // Calculate the hash.
-        value.hash(&mut hasher);
-        let mut hash: Word = hasher.finish().splitmix().splitmix().convert();
-
-        // Iterate over the words.
-        (0..PERMUTATIONS).map(move |_| {
-            hash = hash.xorshift();
-            hash
-        })
+        iter_word_hashes(value, hasher, PERMUTATIONS)
     }
 
     /// Iterate on the SipHasher13 hashes from the provided value.
@@ -103,7 +119,7 @@ where
     /// minhash.insert_with_siphashes13(47);
     /// assert!(minhash.may_contain_value_with_siphashes13(47));
     /// ```
-    ///  
+    ///
     fn iter_siphashes13_from_value<H: Hash>(value: H) -> impl Iterator<Item = Word> {
         Self::iter_hashes_from_value(value, SipHasher13::new())
     }
@@ -139,7 +155,7 @@ where
         Self::iter_hashes_from_value(value, SipHasher13::new_with_keys(key0, key1))
     }
 
-    /// Iterate on the FVN hashes from the provided value.
+    /// Iterate on the FNV hashes from the provided value.
     ///
     /// # Arguments
     /// * `value` - The value to hash.
@@ -151,22 +167,22 @@ where
     ///
     /// let mut minhash = MinHash::<u64, 128>::new();
     ///
-    /// assert!(!minhash.may_contain_value_with_fvn(42));
-    /// minhash.insert_with_fvn(42);
-    /// assert!(minhash.may_contain_value_with_fvn(42));
-    /// minhash.insert_with_fvn(47);
-    /// assert!(minhash.may_contain_value_with_fvn(47));
+    /// assert!(!minhash.may_contain_value_with_fnv(42));
+    /// minhash.insert_with_fnv(42);
+    /// assert!(minhash.may_contain_value_with_fnv(42));
+    /// minhash.insert_with_fnv(47);
+    /// assert!(minhash.may_contain_value_with_fnv(47));
     /// ```
-    ///  
-    fn iter_fvn_from_value<H: Hash>(value: H) -> impl Iterator<Item = Word> {
+    ///
+    fn iter_fnv_from_value<H: Hash>(value: H) -> impl Iterator<Item = Word> {
         Self::iter_hashes_from_value(value, FnvHasher::default())
     }
 
-    /// Iterate on the keyed SipHasher13 hashes from the provided value.
+    /// Iterate on the keyed FNV hashes from the provided value.
     ///
     /// # Arguments
     /// * `value` - The value to hash.
-    /// * `key` - The first key.
+    /// * `key` - The key.
     ///
     /// # Examples
     ///
@@ -176,9 +192,11 @@ where
     /// let mut minhash = MinHash::<u64, 128>::new();
     /// let key = 0x0123456789ABCDEF;
     ///
-    /// assert!(!minhash.may_contain_value_with_keyed_fvn(42, key));
-    ///
-    fn iter_keyed_fvn_from_value<H: Hash>(value: H, key: u64) -> impl Iterator<Item = Word> {
+    /// assert!(!minhash.may_contain_value_with_keyed_fnv(42, key));
+    /// minhash.insert_with_keyed_fnv(42, key);
+    /// assert!(minhash.may_contain_value_with_keyed_fnv(42, key));
+    /// ```
+    fn iter_keyed_fnv_from_value<H: Hash>(value: H, key: u64) -> impl Iterator<Item = Word> {
         Self::iter_hashes_from_value(value, FnvHasher::with_key(key))
     }
 }
@@ -190,175 +208,147 @@ where
 {
 }
 
-pub trait AtomicMinHash<AtomicWord: AtomicFetchMin, const PERMUTATIONS: usize>
-where
-    Self: IterHashes<AtomicWord::Word, PERMUTATIONS>,
-    AtomicWord::Word: Min + XorShift + Copy + Eq,
-    u64: Primitive<<AtomicWord as AtomicFetchMin>::Word>,
-    AtomicWord::Word: XorShift + Copy,
-{
-    /// Iterate over the words.
-    fn iter_atomic<'a>(&'a self) -> impl Iterator<Item = &'a AtomicWord>
-    where
-        AtomicWord: 'a,
-        Self: 'a;
+/// Reinterpret the words of a [`MinHash`] as a slice of atomics.
+///
+/// # Soundness
+/// The atomic view is derived from an exclusive `&mut self` borrow, which gives
+/// the resulting reference read-write provenance (this is the crucial
+/// difference from reinterpreting a shared `&[Word]`, which only grants
+/// read-only provenance and is undefined behavior to write through). The
+/// returned `&[AtomicWord]` can then be shared across threads (it is `Sync`) so
+/// that values can be inserted concurrently with [`AtomicFetchInsert`]. The
+/// exclusive borrow is held for the lifetime of the returned slice, so no
+/// non-atomic access to the same words can race with the atomic inserts.
+///
+/// This mirrors what the (still unstable) `Atomic*::from_mut_slice` helpers do
+/// internally; see Rust issue #76314.
+pub trait AsAtomic {
+    /// The atomic word type backing this MinHash.
+    type AtomicWord: AtomicFetchMin;
 
-    /// Insert a value into the MinHash atomically, with SipHasher13.
-    ///
-    /// # Arguments
-    /// * `value` - The value to insert.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use minhash_rs::prelude::*;
-    ///
-    /// let mut minhash = MinHash::<u64, 4>::new();
-    ///
-    /// assert!(!minhash.may_contain_value_with_siphashes13(42));
-    /// minhash.fetch_insert_with_siphashes13(42, core::sync::atomic::Ordering::Relaxed);
-    /// assert!(!minhash.is_empty());
-    /// assert!(
-    ///     minhash.may_contain_value_with_siphashes13(42),
-    ///     concat!(
-    ///         "The MinHash should contain the value 42, ",
-    ///         "but it does not. The MinHash is: {:?}. ",
-    ///         "The hashes associated to the value 42 are: {:?}."
-    ///     ),
-    ///     minhash,
-    ///     MinHash::<u64, 4>::iter_siphashes13_from_value(42).collect::<Vec<_>>()
-    /// );
-    /// minhash.fetch_insert_with_siphashes13(47, core::sync::atomic::Ordering::Relaxed);
-    /// assert!(minhash.may_contain_value_with_siphashes13(47));
-    ///
-    /// ```
-    ///
-    fn fetch_insert_with_siphashes13<H: Hash>(
-        &self,
-        value: H,
-        ordering: core::sync::atomic::Ordering,
-    ) {
-        // Iterate over the words.
-        for (word, hash) in self
-            .iter_atomic()
-            .zip(Self::iter_siphashes13_from_value(value))
-        {
-            word.set_min(hash, ordering);
+    /// Reinterpret the MinHash words as a shareable slice of atomics.
+    fn as_atomic(&mut self) -> &[Self::AtomicWord];
+}
+
+macro_rules! impl_as_atomic {
+    ($word:ty, $atomic:ty) => {
+        impl<const PERMUTATIONS: usize> AsAtomic for MinHash<$word, PERMUTATIONS> {
+            type AtomicWord = $atomic;
+
+            fn as_atomic(&mut self) -> &[$atomic] {
+                let words: &mut [$word] = self.as_mut();
+                // SAFETY: `$atomic` has the same size and alignment as `$word`,
+                // so the slice layout (data pointer and length) is identical.
+                // The atomic view is derived from a unique `&mut` borrow, so it
+                // carries read-write provenance, and that exclusive borrow is
+                // held for the lifetime of the returned slice, ruling out
+                // concurrent non-atomic access to the same memory.
+                unsafe { core::mem::transmute::<&mut [$word], &[$atomic]>(words) }
+            }
         }
-    }
+    };
+}
 
-    /// Insert a value into the MinHash atomically, with keyed SipHasher13.
-    ///
-    /// # Arguments
-    /// * `value` - The value to insert.
-    /// * `key0` - The first key.
-    /// * `key1` - The second key.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use minhash_rs::prelude::*;
-    ///
-    /// let mut minhash = MinHash::<u64, 4>::new();
-    /// let key0 = 0x0123456789ABCDEF;
-    /// let key1 = 0xFEDCBA9876543210;
-    ///
-    /// assert!(!minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1));
-    /// minhash.fetch_insert_with_keyed_siphashes13(42, key0, key1, core::sync::atomic::Ordering::Relaxed);
-    /// assert!(!minhash.is_empty());
-    /// assert!(
-    ///     minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1),
-    ///     concat!(
-    ///         "The MinHash should contain the value 42, ",
-    ///         "but it does not. The MinHash is: {:?}. ",
-    ///         "The hashes associated to the value 42 are: {:?}."
-    ///     ),
-    ///     minhash,
-    ///     MinHash::<u64, 4>::iter_keyed_siphashes13_from_value(42, key0, key1).collect::<Vec<_>>()
-    /// );
-    /// minhash.fetch_insert_with_keyed_siphashes13(47, key0, key1, core::sync::atomic::Ordering::Relaxed);
-    /// assert!(minhash.may_contain_value_with_keyed_siphashes13(47, key0, key1));
-    ///
-    /// ```
-    ///
+impl_as_atomic!(u8, AtomicU8);
+impl_as_atomic!(u16, AtomicU16);
+impl_as_atomic!(u32, AtomicU32);
+impl_as_atomic!(u64, AtomicU64);
+impl_as_atomic!(usize, AtomicUsize);
+
+/// Concurrent insertion into a slice of atomic MinHash words.
+///
+/// Obtain the slice from [`AsAtomic::as_atomic`], then share it across threads
+/// and call these methods. Membership and Jaccard estimation are performed on
+/// the original [`MinHash`] once the atomic borrow has been released.
+///
+/// # Examples
+///
+/// ```
+/// use minhash_rs::prelude::*;
+/// use core::sync::atomic::Ordering;
+///
+/// let mut minhash = MinHash::<u64, 4>::new();
+/// {
+///     let atomic = minhash.as_atomic();
+///     atomic.fetch_insert_with_siphashes13(42, Ordering::Relaxed);
+///     atomic.fetch_insert_with_siphashes13(47, Ordering::Relaxed);
+/// }
+/// assert!(!minhash.is_empty());
+/// assert!(minhash.may_contain_value_with_siphashes13(42));
+/// assert!(minhash.may_contain_value_with_siphashes13(47));
+/// ```
+pub trait AtomicFetchInsert {
+    /// The (non-atomic) word type stored in each atomic.
+    type Word;
+
+    /// Insert a value atomically using the SipHasher13.
+    fn fetch_insert_with_siphashes13<H: Hash>(&self, value: H, ordering: Ordering);
+
+    /// Insert a value atomically using the keyed SipHasher13.
     fn fetch_insert_with_keyed_siphashes13<H: Hash>(
         &self,
         value: H,
         key0: u64,
         key1: u64,
-        ordering: core::sync::atomic::Ordering,
-    ) {
-        // Iterate over the words.
+        ordering: Ordering,
+    );
+
+    /// Insert a value atomically using the FNV hash.
+    fn fetch_insert_with_fnv<H: Hash>(&self, value: H, ordering: Ordering);
+
+    /// Insert a value atomically using the keyed FNV hash.
+    fn fetch_insert_with_keyed_fnv<H: Hash>(&self, value: H, key: u64, ordering: Ordering);
+}
+
+impl<A> AtomicFetchInsert for [A]
+where
+    A: AtomicFetchMin,
+    A::Word: XorShift + Copy,
+    u64: Primitive<A::Word>,
+{
+    type Word = A::Word;
+
+    fn fetch_insert_with_siphashes13<H: Hash>(&self, value: H, ordering: Ordering) {
         for (word, hash) in self
-            .iter_atomic()
-            .zip(Self::iter_keyed_siphashes13_from_value(value, key0, key1))
+            .iter()
+            .zip(iter_word_hashes(value, SipHasher13::new(), self.len()))
         {
             word.set_min(hash, ordering);
         }
     }
-}
 
-impl<const PERMUTATIONS: usize> AtomicMinHash<AtomicU8, PERMUTATIONS>
-    for MinHash<u8, PERMUTATIONS>
-{
-    /// Iterate over the words.
-    fn iter_atomic<'a>(&'a self) -> impl Iterator<Item = &'a AtomicU8>
-    where
-        Self: 'a,
-    {
-        let words: &[AtomicU8] = unsafe { transmute(self.as_ref()) };
-        words.iter()
+    fn fetch_insert_with_keyed_siphashes13<H: Hash>(
+        &self,
+        value: H,
+        key0: u64,
+        key1: u64,
+        ordering: Ordering,
+    ) {
+        for (word, hash) in self.iter().zip(iter_word_hashes(
+            value,
+            SipHasher13::new_with_keys(key0, key1),
+            self.len(),
+        )) {
+            word.set_min(hash, ordering);
+        }
     }
-}
 
-impl<const PERMUTATIONS: usize> AtomicMinHash<AtomicU16, PERMUTATIONS>
-    for MinHash<u16, PERMUTATIONS>
-{
-    /// Iterate over the words.
-    fn iter_atomic<'a>(&'a self) -> impl Iterator<Item = &'a AtomicU16>
-    where
-        Self: 'a,
-    {
-        let words: &[AtomicU16] = unsafe { transmute(self.as_ref()) };
-        words.iter()
+    fn fetch_insert_with_fnv<H: Hash>(&self, value: H, ordering: Ordering) {
+        for (word, hash) in
+            self.iter()
+                .zip(iter_word_hashes(value, FnvHasher::default(), self.len()))
+        {
+            word.set_min(hash, ordering);
+        }
     }
-}
 
-impl<const PERMUTATIONS: usize> AtomicMinHash<AtomicU32, PERMUTATIONS>
-    for MinHash<u32, PERMUTATIONS>
-{
-    /// Iterate over the words.
-    fn iter_atomic<'a>(&'a self) -> impl Iterator<Item = &'a AtomicU32>
-    where
-        Self: 'a,
-    {
-        let words: &[AtomicU32] = unsafe { transmute(self.as_ref()) };
-        words.iter()
-    }
-}
-
-impl<const PERMUTATIONS: usize> AtomicMinHash<AtomicU64, PERMUTATIONS>
-    for MinHash<u64, PERMUTATIONS>
-{
-    /// Iterate over the words.
-    fn iter_atomic<'a>(&'a self) -> impl Iterator<Item = &'a AtomicU64>
-    where
-        Self: 'a,
-    {
-        let words: &[AtomicU64] = unsafe { transmute(self.as_ref()) };
-        words.iter()
-    }
-}
-
-impl<const PERMUTATIONS: usize> AtomicMinHash<AtomicUsize, PERMUTATIONS>
-    for MinHash<usize, PERMUTATIONS>
-{
-    /// Iterate over the words.
-    fn iter_atomic<'a>(&'a self) -> impl Iterator<Item = &'a AtomicUsize>
-    where
-        Self: 'a,
-    {
-        let words: &[AtomicUsize] = unsafe { transmute(self.as_ref()) };
-        words.iter()
+    fn fetch_insert_with_keyed_fnv<H: Hash>(&self, value: H, key: u64, ordering: Ordering) {
+        for (word, hash) in self.iter().zip(iter_word_hashes(
+            value,
+            FnvHasher::with_key(key),
+            self.len(),
+        )) {
+            word.set_min(hash, ordering);
+        }
     }
 }

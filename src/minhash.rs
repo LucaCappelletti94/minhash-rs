@@ -236,7 +236,7 @@ where
         }
     }
 
-    /// Returns whether the MinHash may contain the provided value, using the FVN.
+    /// Returns whether the MinHash may contain the provided value, using the FNV.
     ///
     /// # Arguments
     /// * `value` - The value to check.
@@ -254,20 +254,20 @@ where
     ///
     /// let mut minhash = MinHash::<u64, 128>::new();
     ///
-    /// assert!(!minhash.may_contain_value_with_fvn(42));
-    /// minhash.insert_with_fvn(42);
-    /// assert!(minhash.may_contain_value_with_fvn(42));
-    /// minhash.insert_with_fvn(47);
-    /// assert!(minhash.may_contain_value_with_fvn(47));
+    /// assert!(!minhash.may_contain_value_with_fnv(42));
+    /// minhash.insert_with_fnv(42);
+    /// assert!(minhash.may_contain_value_with_fnv(42));
+    /// minhash.insert_with_fnv(47);
+    /// assert!(minhash.may_contain_value_with_fnv(47));
     /// ```
     ///
-    pub fn may_contain_value_with_fvn<H: Hash>(&self, value: H) -> bool {
+    pub fn may_contain_value_with_fnv<H: Hash>(&self, value: H) -> bool {
         self.iter()
-            .zip(Self::iter_fvn_from_value(value))
+            .zip(Self::iter_fnv_from_value(value))
             .all(|(word, hash)| word.is_min(hash))
     }
 
-    /// Insert a value into the MinHash using the FVN.
+    /// Insert a value into the MinHash using the FNV.
     ///
     /// # Arguments
     /// * `value` - The value to insert.
@@ -281,19 +281,19 @@ where
     ///
     /// let mut minhash = MinHash::<u64, 128>::new();
     ///
-    /// assert!(!minhash.may_contain_value_with_fvn(42));
-    /// minhash.insert_with_fvn(42);
-    /// assert!(minhash.may_contain_value_with_fvn(42));
-    /// minhash.insert_with_fvn(47);
-    /// assert!(minhash.may_contain_value_with_fvn(47));
+    /// assert!(!minhash.may_contain_value_with_fnv(42));
+    /// minhash.insert_with_fnv(42);
+    /// assert!(minhash.may_contain_value_with_fnv(42));
+    /// minhash.insert_with_fnv(47);
+    /// assert!(minhash.may_contain_value_with_fnv(47));
     /// ```
-    pub fn insert_with_fvn<H: Hash>(&mut self, value: H) {
-        for (word, hash) in self.iter_mut().zip(Self::iter_fvn_from_value(value)) {
+    pub fn insert_with_fnv<H: Hash>(&mut self, value: H) {
+        for (word, hash) in self.iter_mut().zip(Self::iter_fnv_from_value(value)) {
             word.set_min(hash);
         }
     }
 
-    /// Returns whether the MinHash may contain the provided value, using the keyed FVN.
+    /// Returns whether the MinHash may contain the provided value, using the keyed FNV.
     ///
     /// # Arguments
     /// * `value` - The value to check.
@@ -313,20 +313,20 @@ where
     /// let mut minhash = MinHash::<u64, 128>::new();
     /// let key = 0x0123456789ABCDEF;
     ///
-    /// assert!(!minhash.may_contain_value_with_keyed_fvn(42, key));
-    /// minhash.insert_with_keyed_fvn(42, key);
-    /// assert!(minhash.may_contain_value_with_keyed_fvn(42, key));
-    /// minhash.insert_with_keyed_fvn(47, key);
-    /// assert!(minhash.may_contain_value_with_keyed_fvn(47, key));
+    /// assert!(!minhash.may_contain_value_with_keyed_fnv(42, key));
+    /// minhash.insert_with_keyed_fnv(42, key);
+    /// assert!(minhash.may_contain_value_with_keyed_fnv(42, key));
+    /// minhash.insert_with_keyed_fnv(47, key);
+    /// assert!(minhash.may_contain_value_with_keyed_fnv(47, key));
     /// ```
     ///
-    pub fn may_contain_value_with_keyed_fvn<H: Hash>(&self, value: H, key: u64) -> bool {
+    pub fn may_contain_value_with_keyed_fnv<H: Hash>(&self, value: H, key: u64) -> bool {
         self.iter()
-            .zip(Self::iter_keyed_fvn_from_value(value, key))
+            .zip(Self::iter_keyed_fnv_from_value(value, key))
             .all(|(word, hash)| word.is_min(hash))
     }
 
-    /// Insert a value into the MinHash using the keyed FVN.
+    /// Insert a value into the MinHash using the keyed FNV.
     ///
     /// # Arguments
     /// * `value` - The value to insert.
@@ -342,16 +342,16 @@ where
     /// let mut minhash = MinHash::<u64, 128>::new();
     /// let key = 0x0123456789ABCDEF;
     ///
-    /// assert!(!minhash.may_contain_value_with_keyed_fvn(42, key));
-    /// minhash.insert_with_keyed_fvn(42, key);
-    /// assert!(minhash.may_contain_value_with_keyed_fvn(42, key));
-    /// minhash.insert_with_keyed_fvn(47, key);
-    /// assert!(minhash.may_contain_value_with_keyed_fvn(47, key));
+    /// assert!(!minhash.may_contain_value_with_keyed_fnv(42, key));
+    /// minhash.insert_with_keyed_fnv(42, key);
+    /// assert!(minhash.may_contain_value_with_keyed_fnv(42, key));
+    /// minhash.insert_with_keyed_fnv(47, key);
+    /// assert!(minhash.may_contain_value_with_keyed_fnv(47, key));
     /// ```
-    pub fn insert_with_keyed_fvn<H: Hash>(&mut self, value: H, key: u64) {
+    pub fn insert_with_keyed_fnv<H: Hash>(&mut self, value: H, key: u64) {
         for (word, hash) in self
             .iter_mut()
-            .zip(Self::iter_keyed_fvn_from_value(value, key))
+            .zip(Self::iter_keyed_fnv_from_value(value, key))
         {
             word.set_min(hash);
         }

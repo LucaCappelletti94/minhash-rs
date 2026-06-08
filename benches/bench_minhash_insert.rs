@@ -34,20 +34,20 @@ fn bench_minhash_insert_with_keyed_siphashes13(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_minhash_insert_with_fvn(b: &mut Bencher) {
+fn bench_minhash_insert_with_fnv(b: &mut Bencher) {
     const NUMBER_OF_ELEMENTS: usize = 100_000;
     let mut hll: MinHash<u64, 128> = MinHash::new();
 
     b.iter(|| {
         // Inner closure, the actual test
         black_box(for i in 0..NUMBER_OF_ELEMENTS {
-            hll.insert_with_fvn(i)
+            hll.insert_with_fnv(i)
         });
     });
 }
 
 #[bench]
-fn bench_minhash_insert_with_keyed_fvn(b: &mut Bencher) {
+fn bench_minhash_insert_with_keyed_fnv(b: &mut Bencher) {
     const NUMBER_OF_ELEMENTS: usize = 100_000;
     let mut hll: MinHash<u64, 128> = MinHash::new();
     let key: u64 = 0x0123456789ABCDEF;
@@ -55,7 +55,7 @@ fn bench_minhash_insert_with_keyed_fvn(b: &mut Bencher) {
     b.iter(|| {
         // Inner closure, the actual test
         black_box(for i in 0..NUMBER_OF_ELEMENTS {
-            hll.insert_with_keyed_fvn(i, key)
+            hll.insert_with_keyed_fnv(i, key)
         });
     });
 }

@@ -79,7 +79,7 @@ fn estimate_jaccard_index_hll_for_bits<PRECISION: Precision + WordType<BITS>, co
     let hll1: HyperLogLog<PRECISION, BITS> = first_set.iter().collect();
     let hll2: HyperLogLog<PRECISION, BITS> = second_set.iter().collect();
 
-    let estimated_jaccard = hll1.estimate_jaccard_cardinality(&hll2);
+    let estimated_jaccard = hll1.estimate_jaccard_index(&hll2);
 
     let end = std::time::Instant::now();
 
@@ -89,7 +89,7 @@ fn estimate_jaccard_index_hll_for_bits<PRECISION: Precision + WordType<BITS>, co
             elements,
             PRECISION::EXPONENT,
             BITS,
-            (hll1.get_number_of_registers() + hll1.get_number_of_padding_registers()) * BITS,
+            (hll1.len() + HyperLogLog::<PRECISION, BITS>::get_number_of_padding_registers()) * BITS,
             estimated_jaccard,
             real_jaccard,
             end.duration_since(start).as_micros()

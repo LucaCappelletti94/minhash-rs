@@ -29,3 +29,19 @@ jobs:
         run: cargo test --verbose
       - name: Run clippy
         run: cargo clippy -- -Dclippy::all -Dclippy::cargo
+
+  miri:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nightly with Miri
+        run: |
+          rustup toolchain install nightly --component miri
+          rustup default nightly
+          cargo miri setup
+      - name: Run Miri
+        # Scope to the lib and the atomic soundness tests. The test_jaccard
+        # integration test is a heavy benchmark (large sets, file I/O) that is
+        # unsuitable for the Miri interpreter.
+        run: cargo miri test --lib --test test_atomic

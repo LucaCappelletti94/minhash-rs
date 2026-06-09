@@ -1,6 +1,6 @@
 //! Union (merge) of MinHash sketches via the bitwise-or operators.
 
-use std::ops::{BitOr, BitOrAssign};
+use core::ops::{BitOr, BitOrAssign};
 
 use crate::prelude::{Maximal, Min, MinHash};
 

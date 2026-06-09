@@ -10,6 +10,7 @@ readme = "README.md"
 license = "MIT"
 keywords = ["minhash", "probabilistic", "algorithm", "cardinality", "estimation",]
 categories = [
+    "no-std",
     "algorithms",
     "science"
 ]
@@ -46,8 +47,8 @@ cast_precision_loss = "allow"
 transmute_ptr_to_ptr = "allow"
 
 [dependencies]
-siphasher = "0.3"
-fnv = "1.0.3"
+siphasher = { version = "0.3", default-features = false }
+fnv = { version = "1.0.3", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde-big-array = "0.5"
 

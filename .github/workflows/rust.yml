@@ -80,6 +80,23 @@ jobs:
         # I/O) that is unsuitable for the Miri interpreter.
         run: cargo miri test --lib --test test_atomic --test test_atomic_variants
 
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+      - name: Audit dependencies for known vulnerabilities
+        # Checks the dependency tree against the RustSec advisory database.
+        # --deny warnings also fails on unmaintained crates and yanked versions,
+        # not just on outright vulnerabilities.
+        run: cargo audit --deny warnings
+
   coverage:
     runs-on: ubuntu-latest
 

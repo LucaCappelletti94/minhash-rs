@@ -1,3 +1,5 @@
+//! `FromIterator` implementation that builds a MinHash from an iterator.
+
 use std::hash::Hash;
 
 use crate::prelude::{Maximal, Min, MinHash, Primitive, XorShift};
@@ -7,7 +9,6 @@ impl<Word: Min + Clone + Eq + Maximal + XorShift, A: Hash, const PERMUTATATIONS:
 where
     u64: Primitive<Word>,
 {
-    #[inline(always)]
     /// Creates a new MinHash and adds all elements from an iterator to it.
     ///
     /// # Examples

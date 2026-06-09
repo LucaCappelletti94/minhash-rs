@@ -1,3 +1,5 @@
+//! Hash generation and lock-free atomic insertion for MinHash sketches.
+
 use core::hash::{Hash, Hasher};
 use core::sync::atomic::Ordering;
 use core::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize};
@@ -53,7 +55,9 @@ where
     })
 }
 
+/// An atomic integer that supports an atomic minimum-update.
 pub trait AtomicFetchMin {
+    /// The non-atomic word type stored in this atomic.
     type Word;
 
     /// Set the minimum value atomically
@@ -105,6 +109,7 @@ impl AtomicFetchMin for AtomicUsize {
     }
 }
 
+/// Generates the per-permutation hash streams a MinHash uses for a value.
 pub trait IterHashes<Word, const PERMUTATIONS: usize>
 where
     Word: Min + XorShift + Copy + Eq,

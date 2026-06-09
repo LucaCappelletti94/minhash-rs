@@ -11,6 +11,7 @@ pub mod splitmix;
 pub mod union;
 pub mod xorshift;
 
+/// Re-exports of the traits and types needed to use the crate.
 pub mod prelude {
     pub use crate::atomic::*;
     pub use crate::maximal::Maximal;

@@ -1,7 +1,11 @@
+//! Trait for the element-wise minimum operation used by MinHash words.
+
+/// A word type supporting the minimum operations MinHash relies on.
 pub trait Min {
+    /// Replaces `self` with the smaller of `self` and `other`.
     fn set_min(&mut self, other: Self);
 
-    // Returns true if self is less than other.
+    /// Returns whether `self` is less than or equal to `other`.
     fn is_min(&self, other: Self) -> bool;
 }
 

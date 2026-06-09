@@ -13,6 +13,7 @@ use serde_big_array::BigArray;
 
 use crate::prelude::Maximal;
 
+/// A MinHash sketch: a fixed array of `PERMUTATIONS` minimum hash values.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(bound(serialize = "Word: Serialize", deserialize = "Word: Deserialize<'de>"))]
@@ -48,6 +49,7 @@ impl<Word: Maximal, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
     ///
     /// let mut minhash = MinHash::<u64, 128>::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self {
             words: [Word::maximal(); PERMUTATIONS],
@@ -464,7 +466,7 @@ impl<Word: Eq, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
     pub fn estimate_jaccard_index(&self, other: &Self) -> f64 {
         self.iter()
             .zip(other.iter())
-            .map(|(l, r)| (l == r) as usize)
+            .map(|(l, r)| usize::from(l == r))
             .sum::<usize>() as f64
             / PERMUTATIONS as f64
     }

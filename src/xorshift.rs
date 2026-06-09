@@ -4,8 +4,10 @@
 //! XorShift is a fast, non-cryptographic, pseudo-random number generator.
 //! It is used in this crate to generate the permutations for the MinHash.
 
+/// A value that can advance through an xorshift sequence.
 pub trait XorShift {
     /// Returns the next value in the xorshift sequence.
+    #[must_use]
     fn xorshift(self) -> Self;
 }
 
@@ -37,7 +39,7 @@ impl XorShift for u32 {
 
 impl XorShift for u16 {
     fn xorshift(self) -> Self {
-        (self as u32).xorshift() as u16
+        u32::from(self).xorshift() as u16
     }
 }
 

@@ -4,6 +4,9 @@
 //! false negatives: any value that was inserted must be reported as possibly
 //! contained. This must hold for every word width, exercising the per-width
 //! `XorShift`, `Primitive` and `Maximal` implementations.
+// A sketch compared with itself yields exactly 1.0, so the strict float
+// comparison is intentional.
+#![allow(clippy::float_cmp)]
 
 use minhash_rs::prelude::*;
 

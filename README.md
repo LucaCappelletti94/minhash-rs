@@ -15,7 +15,7 @@ MinHash works by hashing the elements of a set and keeping track of the minimum 
 ![MinHash](https://github.com/LucaCappelletti94/minhash-rs/blob/main/minhash_diagram.jpg?raw=true)
 
 ## Using this crate
-As usual, just add the following to your `Cargo.toml` file, altough remember to check out the benchmark results below before going for MinHash over [HyperLogLog](https://github.com/LucaCappelletti94/hyperloglog-rs).
+As usual, just add the following to your `Cargo.toml` file, although remember to check out the benchmark results below before going for MinHash over [HyperLogLog](https://github.com/LucaCappelletti94/hyperloglog-rs).
 
 ```toml
 [dependencies]
@@ -23,7 +23,7 @@ minhash-rs = "0.3.0"
 ```
 
 ## Reason for this implementation
-I wanted to benchmark how well does MinHash estimates the Jaccard similarity between two sets and how well does it compare with other methods such as [HyperLogLog](https://github.com/LucaCappelletti94/hyperloglog-rs). The implementations I have found used more memory than it was necessary by the data structure, and I wanted to compare the performance of MinHash with other methods using the same amount of memory. Additionally, oftencase the methods were not optimized in any way shape or form, and I wanted to compare as fairly as possible MinHash with my rather well optimized implementation of HyperLogLog. I have benchmarked MinHash on many different universe sizes, [you can find the full benchmark report here](https://github.com/LucaCappelletti94/minhash-rs/blob/main/BENCHMARKS.md).
+I wanted to benchmark how well does MinHash estimates the Jaccard similarity between two sets and how well does it compare with other methods such as [HyperLogLog](https://github.com/LucaCappelletti94/hyperloglog-rs). The implementations I have found used more memory than it was necessary by the data structure, and I wanted to compare the performance of MinHash with other methods using the same amount of memory. Additionally, often the methods were not optimized in any way shape or form, and I wanted to compare as fairly as possible MinHash with my rather well optimized implementation of HyperLogLog. I have benchmarked MinHash on many different universe sizes, [you can find the full benchmark report here](https://github.com/LucaCappelletti94/minhash-rs/blob/main/BENCHMARKS.md).
 
 You can find the raw benchmark results in the [tests folder, the compressed CSVs](https://github.com/LucaCappelletti94/minhash-rs/tree/main/tests). I will keep adding datapoints for a while to be extra sure, but the results seem to be already quite clear.
 

@@ -1,12 +1,20 @@
+//! Benchmark harness comparing MinHash and HyperLogLog Jaccard estimation.
+//!
+//! This integration test estimates the Jaccard index of large randomly
+//! generated sets (from 100 up to 100_000_000 elements) across word types and
+//! permutation counts, and writes the timing and accuracy results to CSV files.
+//! It is a disabled, long-running benchmark driver, so the mechanical and
+//! structural pedantic lints below are allowed in this file only.
+#![allow(
+    clippy::needless_borrow,
+    clippy::unreadable_literal,
+    clippy::too_many_lines,
+    clippy::op_ref,
+    clippy::missing_panics_doc,
+    clippy::explicit_iter_loop
+)]
+
 use std::collections::HashSet;
-/// This test module tests the effectiveness of MinHash to estimate the Jaccard index
-/// of several large sets, starting from smaller one of 100 elements and upwards to sets
-/// of 100_000_000 elements. The sets are generated randomly using the splitmix and xorshift
-/// methods that are made available from the libraryr. We experimentally compare the effectiveness
-/// of the MinHash for different word types (u8, u16, u32 and u64) and different number of permutations, and write the results
-/// to a CSV file including also the time and memory (in terms of number of bits) required to
-/// calculate the MinHash.
-///
 use std::fs::File;
 use std::io::Write;
 
@@ -261,20 +269,18 @@ where
     Ok(())
 }
 
+/// Runs the full benchmark sweep and writes per-iteration CSV results.
+///
+/// Disabled by default (the `#[test]` attribute is commented out) because it
+/// takes a very long time. Enable it locally to regenerate the datasets.
 //#[test]
 pub fn test_jaccard() {
     (0..1000_usize)
         .into_par_iter()
         .progress()
         .for_each(|iteration| {
-            let minhash_path = format!(
-                "tests/partial/test_minhash_jaccard_{iteration}.csv",
-                iteration = iteration
-            );
-            let hll_path = format!(
-                "tests/partial/test_hll_jaccard_{iteration}.csv",
-                iteration = iteration
-            );
+            let minhash_path = format!("tests/partial/test_minhash_jaccard_{iteration}.csv");
+            let hll_path = format!("tests/partial/test_hll_jaccard_{iteration}.csv");
 
             // IF the file already exists, we skip the iteration.
             if std::path::Path::new(&minhash_path).exists()

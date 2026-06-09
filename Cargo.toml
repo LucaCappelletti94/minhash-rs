@@ -10,12 +10,40 @@ readme = "README.md"
 license = "MIT"
 keywords = ["minhash", "probabilistic", "algorithm", "cardinality", "estimation",]
 categories = [
-    "no-std",
     "algorithms",
     "science"
 ]
+# Keep the published package lean: the figures, benchmark datasets, diagrams and
+# CI config are only useful in the repository, not to downstream consumers.
+exclude = [
+    "figures/",
+    "tests/*.csv.gz",
+    "tests/partial/",
+    "minhash_diagram.jpg",
+    "minhash_diagram.drawio",
+    ".github/",
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lints.rust]
+missing_docs = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+# Justified, crate-wide exceptions to the pedantic group:
+# The docs repeatedly mention type names (MinHash, HyperLogLog, SipHasher13) in
+# prose where backticking every occurrence would hurt readability.
+doc_markdown = "allow"
+# Narrowing u64 hashes into a narrower word is the entire point of Primitive.
+cast_possible_truncation = "allow"
+# Converting integer counters into f64 for the Jaccard ratio is intentional.
+cast_precision_loss = "allow"
+# The atomic view in `as_atomic` is an audited &mut [Word] -> &[Atomic] reinterpret.
+transmute_ptr_to_ptr = "allow"
 
 [dependencies]
 siphasher = "0.3"
@@ -29,14 +57,10 @@ rayon = "1.5"
 hyperloglog-rs = "0.1"
 indicatif = { version = "0.15", features = ["rayon"] }
 
+# Optimize tests so the data-structure heavy tests run quickly, while keeping
+# overflow checks and debug assertions on to catch bugs.
 [profile.test]
-overflow-checks = true   # Disable integer overflow checks.
-debug = false            # Include debug info.
-debug-assertions = true  # Enables debug assertions.
-opt-level = 3
-
-[profile.release]
-overflow-checks = false   # Disable integer overflow checks.
-debug = false            # Include debug info.
-debug-assertions = false  # Enables debug assertions.
+overflow-checks = true
+debug = false
+debug-assertions = true
 opt-level = 3

@@ -58,12 +58,25 @@ fn memory_matches_word_width() {
 
 #[test]
 fn small_words_saturate_and_report_full() {
-    // A u8 sketch has only 256 distinct hash values per permutation, so a large
-    // universe drives every word down to zero, at which point the sketch is full.
+    // A u8 sketch has few distinct hash values per permutation, so a large
+    // universe drives every word down to the minimum hash value (one, since
+    // zero is never emitted), at which point the sketch is full.
     let mut mh = MinHash::<u8, 16>::new();
     assert!(!mh.is_full());
     for i in 0..100_000_u64 {
         mh.insert_with_siphashes13(i);
     }
     assert!(mh.is_full());
+}
+
+#[test]
+fn single_value_never_saturates_small_words() {
+    // Regression test: previously about one value in 256 truncated to a zero
+    // seed and, because XorShift fixes zero, collapsed an entire u8 sketch to
+    // full from a single insertion. No single value may saturate the sketch.
+    for v in 0..5_000_u64 {
+        let mut mh = MinHash::<u8, 32>::new();
+        mh.insert_with_siphashes13(v);
+        assert!(!mh.is_full(), "value {v} saturated the sketch on its own");
+    }
 }

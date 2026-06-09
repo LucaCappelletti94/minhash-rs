@@ -18,7 +18,7 @@ As usual, just add the following to your `Cargo.toml` file, altough remember to 
 
 ```toml
 [dependencies]
-minhash-rs = "0.1.0"
+minhash-rs = "0.3.0"
 ```
 
 ## Reason for this implementation

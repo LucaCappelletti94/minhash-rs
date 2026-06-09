@@ -4,7 +4,6 @@ use crate::{
     atomic::IterHashes,
     prelude::{Min, Primitive},
     xorshift::XorShift,
-    zero::Zero,
 };
 use core::hash::Hash;
 use core::ops::Index;
@@ -56,7 +55,7 @@ impl<Word: Maximal, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
     }
 }
 
-impl<Word: Min + XorShift + Copy + Eq + Maximal + Zero, const PERMUTATIONS: usize>
+impl<Word: Min + XorShift + Copy + Eq + Maximal, const PERMUTATIONS: usize>
     MinHash<Word, PERMUTATIONS>
 where
     u64: Primitive<Word>,
@@ -81,6 +80,12 @@ where
 
     /// Returns whether the MinHash is fully saturated.
     ///
+    /// A sketch is saturated once every word has reached the smallest hash value
+    /// the generator can produce, which is one (zero is never emitted, see the
+    /// hash generator). Wide words such as `u64` cannot realistically be
+    /// saturated, but narrow words such as `u8` saturate after enough distinct
+    /// insertions.
+    ///
     /// # Examples
     ///
     /// ```
@@ -90,7 +95,7 @@ where
     ///
     /// assert!(!minhash.is_full());
     ///
-    /// for i in 0..1024 {
+    /// for i in 0..4096 {
     ///    minhash.insert_with_siphashes13(i);
     /// }
     ///
@@ -98,7 +103,8 @@ where
     /// ```
     ///
     pub fn is_full(&self) -> bool {
-        self.iter().all(|word| *word == Word::zero())
+        let one: Word = 1u64.convert();
+        self.iter().all(|word| *word == one)
     }
 }
 
@@ -422,6 +428,17 @@ impl<Word: Eq, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
     /// # Arguments
     /// * `other` - The other MinHash to compare to.
     ///
+    /// # Edge cases
+    /// Two empty sketches are identical (every word is the maximal sentinel), so
+    /// the estimate is `1.0`. The Jaccard index of two empty sets is undefined
+    /// (0/0); this method treats identical sketches as perfectly similar.
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let empty = MinHash::<u64, 128>::new();
+    /// assert_eq!(empty.estimate_jaccard_index(&empty), 1.0);
+    /// ```
     ///
     /// # Examples
     ///

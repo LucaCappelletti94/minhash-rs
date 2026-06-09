@@ -6,44 +6,47 @@
 
 pub trait XorShift {
     /// Returns the next value in the xorshift sequence.
-    fn xorshift(&mut self) -> Self;
+    fn xorshift(self) -> Self;
 }
 
 impl XorShift for usize {
-    fn xorshift(&mut self) -> Self {
-        (*self as u64).xorshift() as usize
+    fn xorshift(self) -> Self {
+        (self as u64).xorshift() as usize
     }
 }
 
 impl XorShift for u64 {
-    fn xorshift(&mut self) -> Self {
-        *self ^= *self << 13;
-        *self ^= *self >> 7;
-        *self ^= *self << 17;
-        *self
+    fn xorshift(self) -> Self {
+        let mut x = self;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        x
     }
 }
 
 impl XorShift for u32 {
-    fn xorshift(&mut self) -> Self {
-        *self ^= *self << 13;
-        *self ^= *self >> 17;
-        *self ^= *self << 5;
-        *self
+    fn xorshift(self) -> Self {
+        let mut x = self;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        x
     }
 }
 
 impl XorShift for u16 {
-    fn xorshift(&mut self) -> Self {
-        (*self as u32).xorshift() as u16
+    fn xorshift(self) -> Self {
+        (self as u32).xorshift() as u16
     }
 }
 
 impl XorShift for u8 {
-    fn xorshift(&mut self) -> Self {
-        *self ^= *self << 3;
-        *self ^= *self >> 7;
-        *self ^= *self << 1;
-        *self
+    fn xorshift(self) -> Self {
+        let mut x = self;
+        x ^= x << 3;
+        x ^= x >> 7;
+        x ^= x << 1;
+        x
     }
 }

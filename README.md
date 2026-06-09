@@ -22,6 +22,34 @@ As usual, just add the following to your `Cargo.toml` file, although remember to
 minhash-rs = "0.3.0"
 ```
 
+### Example
+Build a sketch from each set and estimate their Jaccard similarity:
+
+```rust
+use std::collections::HashSet;
+use minhash_rs::prelude::*;
+
+let left: HashSet<u64> = (0..100).collect();
+let right: HashSet<u64> = (50..150).collect();
+
+// A MinHash over `u64` words with 256 permutations.
+let left_sketch: MinHash<u64, 256> = left.iter().collect();
+let right_sketch: MinHash<u64, 256> = right.iter().collect();
+
+let estimate = left_sketch.estimate_jaccard_index(&right_sketch);
+
+// The true Jaccard index here is 50 / 150 = 1/3.
+let truth = 1.0 / 3.0;
+assert!((estimate - truth).abs() < 0.1);
+
+// Sketches can also be merged: `a | b` is the sketch of the union of the sets.
+let union_sketch = left_sketch | right_sketch;
+let union: HashSet<u64> = left.union(&right).copied().collect();
+assert_eq!(union_sketch, union.iter().collect());
+```
+
+The word type (`u8`, `u16`, `u32`, `u64`, `usize`) and the number of permutations are compile-time parameters that trade memory for accuracy.
+
 ## Reason for this implementation
 I wanted to benchmark how well does MinHash estimates the Jaccard similarity between two sets and how well does it compare with other methods such as [HyperLogLog](https://github.com/LucaCappelletti94/hyperloglog-rs). The implementations I have found used more memory than it was necessary by the data structure, and I wanted to compare the performance of MinHash with other methods using the same amount of memory. Additionally, often the methods were not optimized in any way shape or form, and I wanted to compare as fairly as possible MinHash with my rather well optimized implementation of HyperLogLog. I have benchmarked MinHash on many different universe sizes, [you can find the full benchmark report here](https://github.com/LucaCappelletti94/minhash-rs/blob/main/BENCHMARKS.md).
 

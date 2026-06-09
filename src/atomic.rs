@@ -2,7 +2,6 @@
 
 use core::hash::{Hash, Hasher};
 use core::sync::atomic::Ordering;
-use core::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize};
 
 use fnv::FnvHasher;
 use siphasher::sip128::SipHasher13;
@@ -67,46 +66,6 @@ pub trait AtomicFetchMin {
     /// * `ordering` - The ordering to use.
     ///
     fn set_min(&self, value: Self::Word, ordering: Ordering);
-}
-
-impl AtomicFetchMin for AtomicU8 {
-    type Word = u8;
-
-    fn set_min(&self, value: Self::Word, ordering: Ordering) {
-        self.fetch_min(value, ordering);
-    }
-}
-
-impl AtomicFetchMin for AtomicU16 {
-    type Word = u16;
-
-    fn set_min(&self, value: Self::Word, ordering: Ordering) {
-        self.fetch_min(value, ordering);
-    }
-}
-
-impl AtomicFetchMin for AtomicU32 {
-    type Word = u32;
-
-    fn set_min(&self, value: Self::Word, ordering: Ordering) {
-        self.fetch_min(value, ordering);
-    }
-}
-
-impl AtomicFetchMin for AtomicU64 {
-    type Word = u64;
-
-    fn set_min(&self, value: Self::Word, ordering: Ordering) {
-        self.fetch_min(value, ordering);
-    }
-}
-
-impl AtomicFetchMin for AtomicUsize {
-    type Word = usize;
-
-    fn set_min(&self, value: Self::Word, ordering: Ordering) {
-        self.fetch_min(value, ordering);
-    }
 }
 
 /// Generates the per-permutation hash streams a MinHash uses for a value.
@@ -255,30 +214,47 @@ pub trait AsAtomic {
     fn as_atomic(&mut self) -> &[Self::AtomicWord];
 }
 
-macro_rules! impl_as_atomic {
-    ($word:ty, $atomic:ty) => {
-        impl<const PERMUTATIONS: usize> AsAtomic for MinHash<$word, PERMUTATIONS> {
-            type AtomicWord = $atomic;
+// Emit the atomic implementations for one word width, gated on the target
+// actually having an atomic of that width. Targets without (for example) 64-bit
+// atomics simply do not get the `u64` atomic API, while the rest of the crate
+// (and narrower atomics) keeps working. The atomic type is referenced through
+// its full path so the gated-out widths are never even named.
+macro_rules! atomic_impls {
+    ($word:ty, $atomic:ident, $has:literal) => {
+        #[cfg(target_has_atomic = $has)]
+        impl AtomicFetchMin for core::sync::atomic::$atomic {
+            type Word = $word;
 
-            fn as_atomic(&mut self) -> &[$atomic] {
+            fn set_min(&self, value: Self::Word, ordering: Ordering) {
+                self.fetch_min(value, ordering);
+            }
+        }
+
+        #[cfg(target_has_atomic = $has)]
+        impl<const PERMUTATIONS: usize> AsAtomic for MinHash<$word, PERMUTATIONS> {
+            type AtomicWord = core::sync::atomic::$atomic;
+
+            fn as_atomic(&mut self) -> &[core::sync::atomic::$atomic] {
                 let words: &mut [$word] = self.as_mut();
-                // SAFETY: `$atomic` has the same size and alignment as `$word`,
+                // SAFETY: the atomic has the same size and alignment as `$word`,
                 // so the slice layout (data pointer and length) is identical.
                 // The atomic view is derived from a unique `&mut` borrow, so it
                 // carries read-write provenance, and that exclusive borrow is
                 // held for the lifetime of the returned slice, ruling out
                 // concurrent non-atomic access to the same memory.
-                unsafe { core::mem::transmute::<&mut [$word], &[$atomic]>(words) }
+                unsafe {
+                    core::mem::transmute::<&mut [$word], &[core::sync::atomic::$atomic]>(words)
+                }
             }
         }
     };
 }
 
-impl_as_atomic!(u8, AtomicU8);
-impl_as_atomic!(u16, AtomicU16);
-impl_as_atomic!(u32, AtomicU32);
-impl_as_atomic!(u64, AtomicU64);
-impl_as_atomic!(usize, AtomicUsize);
+atomic_impls!(u8, AtomicU8, "8");
+atomic_impls!(u16, AtomicU16, "16");
+atomic_impls!(u32, AtomicU32, "32");
+atomic_impls!(u64, AtomicU64, "64");
+atomic_impls!(usize, AtomicUsize, "ptr");
 
 /// Concurrent insertion into a slice of atomic MinHash words.
 ///

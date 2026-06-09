@@ -10,7 +10,6 @@ pub mod primitive;
 pub mod splitmix;
 pub mod union;
 pub mod xorshift;
-pub mod zero;
 
 pub mod prelude {
     pub use crate::atomic::*;
@@ -22,5 +21,4 @@ pub mod prelude {
     pub use crate::splitmix::SplitMix;
     pub use crate::union::*;
     pub use crate::xorshift::XorShift;
-    pub use crate::zero::Zero;
 }

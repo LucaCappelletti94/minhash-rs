@@ -26,12 +26,6 @@ impl Maximal for u64 {
     }
 }
 
-impl Maximal for u128 {
-    fn maximal() -> Self {
-        u128::MAX
-    }
-}
-
 impl Maximal for usize {
     fn maximal() -> Self {
         usize::MAX

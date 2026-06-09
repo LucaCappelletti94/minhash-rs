@@ -3,13 +3,13 @@
 //! The defining guarantee of MinHash is that membership queries never produce
 //! false negatives: any value that was inserted must be reported as possibly
 //! contained. This must hold for every word width, exercising the per-width
-//! `XorShift`, `Primitive`, `Maximal` and `Zero` implementations.
+//! `XorShift`, `Primitive` and `Maximal` implementations.
 
 use minhash_rs::prelude::*;
 
 fn no_false_negatives<Word, const PERMUTATIONS: usize>(values: &[u64])
 where
-    Word: Min + XorShift + Copy + Eq + Maximal + Zero,
+    Word: Min + XorShift + Copy + Eq + Maximal,
     u64: Primitive<Word>,
 {
     let mut mh = MinHash::<Word, PERMUTATIONS>::new();

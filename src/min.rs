@@ -15,16 +15,6 @@ impl Min for usize {
     }
 }
 
-impl Min for u128 {
-    fn set_min(&mut self, other: Self) {
-        *self = (*self).min(other);
-    }
-
-    fn is_min(&self, other: Self) -> bool {
-        *self <= other
-    }
-}
-
 impl Min for u64 {
     fn set_min(&mut self, other: Self) {
         *self = (*self).min(other);

@@ -33,6 +33,21 @@ jobs:
         # warning into a hard error across every target.
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+  no-std:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nightly with a bare-metal target
+        run: |
+          rustup toolchain install nightly
+          rustup default nightly
+          rustup target add x86_64-unknown-none
+      - name: Build for a no_std target
+        # Building the library and its dependency graph for a target with no std
+        # available guarantees the crate stays no_std.
+        run: cargo build --target x86_64-unknown-none
+
   miri:
     runs-on: ubuntu-latest
 

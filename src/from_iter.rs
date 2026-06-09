@@ -1,6 +1,6 @@
 //! `FromIterator` implementation that builds a MinHash from an iterator.
 
-use std::hash::Hash;
+use core::hash::Hash;
 
 use crate::prelude::{Maximal, Min, MinHash, Primitive, XorShift};
 

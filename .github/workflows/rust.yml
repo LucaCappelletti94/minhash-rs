@@ -41,10 +41,10 @@ jobs:
           rustup default nightly
           cargo miri setup
       - name: Run Miri
-        # Scope to the lib and the atomic soundness tests. The test_jaccard
-        # integration test is a heavy benchmark (large sets, file I/O) that is
-        # unsuitable for the Miri interpreter.
-        run: cargo miri test --lib --test test_atomic
+        # Scope to the lib and the atomic soundness tests (every word width). The
+        # test_jaccard integration test is a heavy benchmark (large sets, file
+        # I/O) that is unsuitable for the Miri interpreter.
+        run: cargo miri test --lib --test test_atomic --test test_atomic_variants
 
   coverage:
     runs-on: ubuntu-latest

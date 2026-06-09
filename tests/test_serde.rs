@@ -9,7 +9,6 @@ where
         + Copy
         + Eq
         + Maximal
-        + Zero
         + core::fmt::Debug
         + serde::Serialize
         + serde::de::DeserializeOwned,

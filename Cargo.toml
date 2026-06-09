@@ -21,6 +21,7 @@ categories = [
 siphasher = "0.3"
 fnv = "1.0.3"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde-big-array = "0.5"
 
 [dev-dependencies]
 serde_json = "1.0"

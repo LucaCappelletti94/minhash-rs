@@ -1,10 +1,15 @@
 use core::ops::{Index, IndexMut};
 
+use serde::{Deserialize, Serialize};
+use serde_big_array::BigArray;
+
 use crate::prelude::*;
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(serialize = "Word: Serialize", deserialize = "Word: Deserialize<'de>"))]
 pub struct MinHashArray<Word, const PERMUTATIONS: usize, const N: usize> {
+    #[serde(with = "BigArray")]
     counters: [MinHash<Word, PERMUTATIONS>; N],
 }
 

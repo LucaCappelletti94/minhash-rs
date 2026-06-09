@@ -9,12 +9,16 @@ use crate::{
 use core::hash::Hash;
 use core::ops::Index;
 use core::ops::IndexMut;
+use serde::{Deserialize, Serialize};
+use serde_big_array::BigArray;
 
 use crate::prelude::Maximal;
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(bound(serialize = "Word: Serialize", deserialize = "Word: Deserialize<'de>"))]
 pub struct MinHash<Word, const PERMUTATIONS: usize> {
+    #[serde(with = "BigArray")]
     words: [Word; PERMUTATIONS],
 }
 

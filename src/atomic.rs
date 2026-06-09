@@ -11,24 +11,40 @@ use crate::prelude::*;
 ///
 /// This is shared by both the non-atomic [`IterHashes`] machinery and the
 /// atomic insertion path so that the two stay byte-for-byte compatible.
+///
+/// Zero is never emitted. XorShift has zero as a fixed point, so a hash that
+/// ever reaches zero would stay zero for the rest of the stream. In particular,
+/// when the seed truncates to zero (about one value in 256 for an 8-bit word)
+/// the whole stream would collapse to zero and saturate the sketch from a
+/// single insertion. Remapping zero to one keeps the stream non-degenerate for
+/// every word width.
 fn iter_word_hashes<Word, H, HS>(
     value: H,
     mut hasher: HS,
     count: usize,
 ) -> impl Iterator<Item = Word>
 where
-    Word: XorShift + Copy,
+    Word: XorShift + Copy + PartialEq,
     u64: Primitive<Word>,
     H: Hash,
     HS: Hasher,
 {
+    let zero: Word = 0u64.convert();
+    let one: Word = 1u64.convert();
+
     // Calculate the hash.
     value.hash(&mut hasher);
     let mut hash: Word = hasher.finish().splitmix().splitmix().convert();
+    if hash == zero {
+        hash = one;
+    }
 
-    // Iterate over the words.
+    // Iterate over the words, never emitting the degenerate zero state.
     (0..count).map(move |_| {
         hash = hash.xorshift();
+        if hash == zero {
+            hash = one;
+        }
         hash
     })
 }
@@ -303,7 +319,7 @@ pub trait AtomicFetchInsert {
 impl<A> AtomicFetchInsert for [A]
 where
     A: AtomicFetchMin,
-    A::Word: XorShift + Copy,
+    A::Word: XorShift + Copy + PartialEq,
     u64: Primitive<A::Word>,
 {
     type Word = A::Word;

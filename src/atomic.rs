@@ -39,7 +39,11 @@ where
         hash = one;
     }
 
-    // Iterate over the words, never emitting the degenerate zero state.
+    // Iterate over the words, never emitting the degenerate zero state. The
+    // native generators (u8/u16/u32/u64) are bijections on the non-zero space,
+    // so once the seed is non-zero they never produce zero; this in-loop guard
+    // therefore only fires for widths whose generator truncates a wider type
+    // (for example `usize` on a 32-bit target), keeping the stream safe there.
     (0..count).map(move |_| {
         hash = hash.xorshift();
         if hash == zero {

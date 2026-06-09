@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![no_std]
 
 pub mod atomic;
 pub mod from_iter;

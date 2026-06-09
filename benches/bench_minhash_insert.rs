@@ -1,3 +1,4 @@
+//! Insertion benchmarks for the non-atomic MinHash hash families.
 #![feature(test)]
 extern crate test;
 
@@ -20,8 +21,8 @@ fn bench_minhash_insert_with_siphashes13(b: &mut Bencher) {
 
 #[bench]
 fn bench_minhash_insert_with_keyed_siphashes13(b: &mut Bencher) {
-    let key0 = 0x0123456789ABCDEF;
-    let key1 = 0xFEDCBA9876543210;
+    let key0 = 0x0123_4567_89AB_CDEF;
+    let key1 = 0xFEDC_BA98_7654_3210;
 
     b.iter(|| {
         let mut minhash: MinHash<u64, 128> = MinHash::new();
@@ -45,7 +46,7 @@ fn bench_minhash_insert_with_fnv(b: &mut Bencher) {
 
 #[bench]
 fn bench_minhash_insert_with_keyed_fnv(b: &mut Bencher) {
-    let key: u64 = 0x0123456789ABCDEF;
+    let key: u64 = 0x0123_4567_89AB_CDEF;
 
     b.iter(|| {
         let mut minhash: MinHash<u64, 128> = MinHash::new();

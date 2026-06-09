@@ -28,7 +28,10 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
       - name: Run clippy
-        run: cargo clippy -- -Dclippy::all -Dclippy::cargo
+        # Lint levels (clippy all/pedantic/cargo, missing_docs, ...) are set in
+        # the [lints] table in Cargo.toml. -D warnings turns any remaining
+        # warning into a hard error across every target.
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
   miri:
     runs-on: ubuntu-latest

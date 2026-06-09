@@ -1,4 +1,7 @@
 //! Tests for `MinHashArray`, a fixed-size array of independent MinHash sketches.
+// Jaccard estimates against an identical sketch are exactly 1.0, so the strict
+// float comparisons here are intentional.
+#![allow(clippy::float_cmp)]
 
 use minhash_rs::prelude::*;
 

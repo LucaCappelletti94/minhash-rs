@@ -1,3 +1,5 @@
+//! Conversion of `u64` hash values into the narrower MinHash word types.
+
 /// Conversion from a `u64` hash value into a narrower MinHash word.
 ///
 /// The hash generator always produces `u64` values (from the hasher and
@@ -5,6 +7,7 @@
 /// supported word type. The bound used throughout the crate is
 /// `u64: Primitive<Word>`.
 pub trait Primitive<T> {
+    /// Converts `self` into the target word type, narrowing if necessary.
     fn convert(self) -> T;
 }
 

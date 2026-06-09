@@ -1,3 +1,5 @@
+//! A fixed-size array of independent MinHash sketches.
+
 use core::ops::{Index, IndexMut};
 
 use serde::{Deserialize, Serialize};
@@ -5,6 +7,7 @@ use serde_big_array::BigArray;
 
 use crate::prelude::*;
 
+/// An array of `N` independent [`MinHash`] sketches, each with `PERMUTATIONS` words.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound(serialize = "Word: Serialize", deserialize = "Word: Deserialize<'de>"))]
@@ -22,6 +25,8 @@ impl<Word: Maximal, const PERMUTATIONS: usize, const N: usize> Default
 }
 
 impl<Word: Maximal, const PERMUTATIONS: usize, const N: usize> MinHashArray<Word, PERMUTATIONS, N> {
+    /// Creates a new array of empty MinHash sketches.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             counters: [MinHash::new(); N],

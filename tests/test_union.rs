@@ -4,6 +4,9 @@
 //! element-wise minimum, which yields the sketch of the union of the two
 //! underlying sets (not the intersection). These tests pin that behavior and
 //! the algebraic properties a merge should have.
+// `op_ref`: we intentionally exercise the `|` operator with a borrowed right
+// operand. `float_cmp`: a merged sketch compared with itself is exactly 1.0.
+#![allow(clippy::op_ref, clippy::float_cmp)]
 
 use std::collections::HashSet;
 

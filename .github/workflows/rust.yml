@@ -45,3 +45,23 @@ jobs:
         # integration test is a heavy benchmark (large sets, file I/O) that is
         # unsuitable for the Miri interpreter.
         run: cargo miri test --lib --test test_atomic
+
+  coverage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nightly with llvm-tools-preview
+        run: |
+          rustup toolchain install nightly --component llvm-tools-preview
+          rustup default nightly
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate coverage (lcov)
+        run: cargo llvm-cov --lcov --output-path lcov.info
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: lcov.info
+          fail_ci_if_error: false

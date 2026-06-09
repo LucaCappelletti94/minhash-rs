@@ -2,6 +2,7 @@
 [![Build status](https://github.com/lucacappelletti94/minhash-rs/actions/workflows/rust.yml/badge.svg)](https://github.com/lucacappelletti94/minhash-rs/actions)
 [![Crates.io](https://img.shields.io/crates/v/minhash-rs.svg)](https://crates.io/crates/minhash-rs)
 [![Documentation](https://docs.rs/minhash-rs/badge.svg)](https://docs.rs/minhash-rs)
+[![codecov](https://codecov.io/gh/LucaCappelletti94/minhash-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/LucaCappelletti94/minhash-rs)
 
 A Rust implementation of MinHash trying to be parsimonious with memory.
 

@@ -20,3 +20,7 @@ Cargo.lock
 # Coverage reports
 lcov.info
 *.profraw
+
+# cargo-mutants output
+mutants.out/
+mutants.out.old/

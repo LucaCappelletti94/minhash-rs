@@ -97,6 +97,32 @@ jobs:
         # not just on outright vulnerabilities.
         run: cargo audit --deny warnings
 
+  mutants:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up nightly Rust
+        # The hyperloglog-rs dev-dependency uses a nightly-only feature gate, so
+        # the test targets cargo-mutants rebuilds only compile on nightly, as
+        # with the other build jobs here.
+        run: |
+          rustup toolchain install nightly --profile minimal
+          rustup default nightly
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@cargo-mutants
+      - name: Run mutation testing
+        # Mutates the library one site at a time and reruns the tests. A
+        # surviving mutant means some behaviour is never asserted; the job
+        # fails until a test catches it.
+        run: cargo mutants --in-place
+      - name: Upload mutants report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-report
+          path: mutants.out
+
   coverage:
     runs-on: ubuntu-latest
 

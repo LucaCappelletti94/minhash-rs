@@ -8,14 +8,13 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up nightly Rust
         run: |
           rustup toolchain install nightly --component clippy
@@ -38,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install nightly with bare-metal targets
         run: |
           rustup toolchain install nightly
@@ -57,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install the minimum supported Rust version
         run: |
           rustup toolchain install 1.75.0 --profile minimal
@@ -69,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install nightly with Miri
         run: |
           rustup toolchain install nightly --component miri
@@ -85,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up stable Rust
         run: |
           rustup toolchain install stable --profile minimal
@@ -102,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up nightly Rust
         # The hyperloglog-rs dev-dependency uses a nightly-only feature gate, so
         # the test targets cargo-mutants rebuilds only compile on nightly, as
@@ -119,7 +118,7 @@ jobs:
         run: cargo mutants --in-place
       - name: Upload mutants report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mutants-report
           path: mutants.out
@@ -128,7 +127,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install nightly with llvm-tools-preview
         run: |
           rustup toolchain install nightly --component llvm-tools-preview
@@ -138,7 +137,7 @@ jobs:
       - name: Generate coverage (lcov)
         run: cargo llvm-cov --lcov --output-path lcov.info
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: lcov.info

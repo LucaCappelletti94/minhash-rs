@@ -14,15 +14,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
-      - name: Install Clippy
-        run:
+      - uses: actions/checkout@v4
+      - name: Set up nightly Rust
+        run: |
           rustup toolchain install nightly --component clippy
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
+          rustup default nightly
       - name: Build
         run: cargo build --verbose
       - name: Run tests
@@ -32,6 +28,10 @@ jobs:
         # the [lints] table in Cargo.toml. -D warnings turns any remaining
         # warning into a hard error across every target.
         run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Install taplo
+        uses: taiki-e/install-action@taplo
+      - name: Check TOML formatting
+        run: taplo fmt --check Cargo.toml
 
   no-std:
     runs-on: ubuntu-latest

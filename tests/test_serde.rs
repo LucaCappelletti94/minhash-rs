@@ -7,6 +7,7 @@ where
     Word: Min
         + XorShift
         + Copy
+        + Ord
         + Eq
         + Maximal
         + core::fmt::Debug

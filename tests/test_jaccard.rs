@@ -39,7 +39,7 @@ fn populate_set(elements: usize, mut random_state: u64) -> HashSet<u64> {
 /// to a CSV file so to avoid code duplication as much as possible.
 fn estimate_jaccard_index_minhash_for_permutation<
     const PERMUTATIONS: usize,
-    Word: Maximal + Copy + Min + Eq + XorShift,
+    Word: Maximal + Copy + Ord + Min + Eq + XorShift,
 >(
     elements: usize,
     first_set: &HashSet<u64>,
@@ -165,7 +165,7 @@ fn estimate_jaccard_index_hll<
 
 /// Method to compute and write the results for a given constant parametrization of MinHash
 /// to a CSV file so to avoid code duplication as much as possible.
-fn estimate_jaccard_index_minhash<Word: Maximal + Copy + Min + Eq + XorShift>(
+fn estimate_jaccard_index_minhash<Word: Maximal + Copy + Ord + Min + Eq + XorShift>(
     elements: usize,
     first_set: &HashSet<u64>,
     second_set: &HashSet<u64>,

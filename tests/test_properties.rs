@@ -18,7 +18,7 @@ const PERMUTATIONS: usize = 64;
 
 /// The full bound set the per-word helpers share.
 trait Word:
-    Min + XorShift + Copy + Eq + Maximal + core::fmt::Debug + Serialize + DeserializeOwned
+    Min + XorShift + Copy + Ord + Eq + Maximal + core::fmt::Debug + Serialize + DeserializeOwned
 where
     u64: Primitive<Self>,
 {
@@ -26,7 +26,7 @@ where
 
 impl<T> Word for T
 where
-    T: Min + XorShift + Copy + Eq + Maximal + core::fmt::Debug + Serialize + DeserializeOwned,
+    T: Min + XorShift + Copy + Ord + Eq + Maximal + core::fmt::Debug + Serialize + DeserializeOwned,
     u64: Primitive<T>,
 {
 }

@@ -2,7 +2,7 @@
 
 use core::ops::{BitOr, BitOrAssign};
 
-use crate::prelude::{Maximal, Min, MinHash};
+use crate::prelude::{Maximal, MinHash};
 
 /// Merge another MinHash into this one, producing the sketch of the union.
 ///
@@ -12,17 +12,15 @@ use crate::prelude::{Maximal, Min, MinHash};
 /// compute the **union** (merge) of the sketches. There is no way to obtain an
 /// intersection sketch by combining two sketches; estimate the Jaccard index
 /// instead and derive the intersection cardinality from it.
-impl<Word: Min + Clone + Eq, const PERMUTATIONS: usize> BitOrAssign<&Self>
+impl<Word: Ord + Copy, const PERMUTATIONS: usize> BitOrAssign<&Self>
     for MinHash<Word, PERMUTATIONS>
 {
     fn bitor_assign(&mut self, rhs: &Self) {
-        self.iter_mut().zip(rhs.iter()).for_each(|(left, right)| {
-            left.set_min(right.clone());
-        });
+        self.min_assign(rhs);
     }
 }
 
-impl<Word: Min + Clone + Eq, const PERMUTATIONS: usize> BitOrAssign<Self>
+impl<Word: Ord + Copy, const PERMUTATIONS: usize> BitOrAssign<Self>
     for MinHash<Word, PERMUTATIONS>
 {
     fn bitor_assign(&mut self, rhs: Self) {
@@ -32,7 +30,7 @@ impl<Word: Min + Clone + Eq, const PERMUTATIONS: usize> BitOrAssign<Self>
 
 // The `|` operator already signals that the result is meant to be used.
 #[allow(clippy::return_self_not_must_use)]
-impl<Word: Min + Clone + Eq, const PERMUTATIONS: usize> BitOr for MinHash<Word, PERMUTATIONS> {
+impl<Word: Ord + Copy, const PERMUTATIONS: usize> BitOr for MinHash<Word, PERMUTATIONS> {
     type Output = Self;
 
     /// Returns the union (merge) of two MinHash sketches.
@@ -61,9 +59,7 @@ impl<Word: Min + Clone + Eq, const PERMUTATIONS: usize> BitOr for MinHash<Word, 
 }
 
 #[allow(clippy::return_self_not_must_use)]
-impl<Word: Min + Clone + Eq, const PERMUTATIONS: usize> BitOr<&Self>
-    for MinHash<Word, PERMUTATIONS>
-{
+impl<Word: Ord + Copy, const PERMUTATIONS: usize> BitOr<&Self> for MinHash<Word, PERMUTATIONS> {
     type Output = Self;
 
     fn bitor(mut self, rhs: &Self) -> Self::Output {
@@ -73,7 +69,7 @@ impl<Word: Min + Clone + Eq, const PERMUTATIONS: usize> BitOr<&Self>
 }
 
 /// Extension trait adding [`union`](MinHashIterator::union) to iterators of MinHashes.
-pub trait MinHashIterator<Word: Min + Eq, const PERMUTATIONS: usize> {
+pub trait MinHashIterator<Word: Ord + Copy, const PERMUTATIONS: usize> {
     /// Returns a MinHash that is the union (merge) of all MinHashes in the iterator.
     ///
     /// # Example
@@ -102,7 +98,7 @@ pub trait MinHashIterator<Word: Min + Eq, const PERMUTATIONS: usize> {
 }
 
 impl<
-        Word: Maximal + Min + Eq,
+        Word: Maximal + Ord + Copy,
         const PERMUTATIONS: usize,
         I: Iterator<Item = MinHash<Word, PERMUTATIONS>>,
     > MinHashIterator<Word, PERMUTATIONS> for I

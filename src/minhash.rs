@@ -15,6 +15,7 @@ use crate::prelude::Maximal;
 
 /// A MinHash sketch: a fixed array of `PERMUTATIONS` minimum hash values.
 #[repr(transparent)]
+#[allow(clippy::unsafe_derive_deserialize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(bound(serialize = "Word: Serialize", deserialize = "Word: Deserialize<'de>"))]
 pub struct MinHash<Word, const PERMUTATIONS: usize> {
@@ -110,7 +111,7 @@ where
     }
 }
 
-impl<Word: Min + XorShift + Copy + Eq, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS>
+impl<Word: Min + Ord + XorShift + Copy + Eq, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS>
 where
     Self: IterHashes<Word, PERMUTATIONS>,
     u64: Primitive<Word>,
@@ -141,9 +142,13 @@ where
     /// ```
     ///
     pub fn may_contain_value_with_siphashes13<H: Hash>(&self, value: H) -> bool {
-        self.iter()
-            .zip(Self::iter_siphashes13_from_value(value))
-            .all(|(word, hash)| word.is_min(hash))
+        let mut hashes = Self::iter_siphashes13_from_value(value);
+        for i in 0..PERMUTATIONS {
+            if self.words[i] > unsafe { hashes.next().unwrap_unchecked() } {
+                return false;
+            }
+        }
+        true
     }
 
     /// Insert a value into the MinHash using the SipHasher13.
@@ -167,11 +172,9 @@ where
     /// assert!(minhash.may_contain_value_with_siphashes13(47));
     /// ```
     pub fn insert_with_siphashes13<H: Hash>(&mut self, value: H) {
-        for (word, hash) in self
-            .iter_mut()
-            .zip(Self::iter_siphashes13_from_value(value))
-        {
-            word.set_min(hash);
+        let mut hashes = Self::iter_siphashes13_from_value(value);
+        for i in 0..PERMUTATIONS {
+            self.words[i] = self.words[i].min(unsafe { hashes.next().unwrap_unchecked() });
         }
     }
 
@@ -210,9 +213,13 @@ where
         key0: u64,
         key1: u64,
     ) -> bool {
-        self.iter()
-            .zip(Self::iter_keyed_siphashes13_from_value(value, key0, key1))
-            .all(|(word, hash)| word.is_min(hash))
+        let mut hashes = Self::iter_keyed_siphashes13_from_value(value, key0, key1);
+        for i in 0..PERMUTATIONS {
+            if self.words[i] > unsafe { hashes.next().unwrap_unchecked() } {
+                return false;
+            }
+        }
+        true
     }
 
     /// Insert a value into the MinHash using the keyed SipHasher13.
@@ -240,11 +247,9 @@ where
     /// assert!(minhash.may_contain_value_with_keyed_siphashes13(47, key0, key1));
     /// ```
     pub fn insert_with_keyed_siphashes13<H: Hash>(&mut self, value: H, key0: u64, key1: u64) {
-        for (word, hash) in self
-            .iter_mut()
-            .zip(Self::iter_keyed_siphashes13_from_value(value, key0, key1))
-        {
-            word.set_min(hash);
+        let mut hashes = Self::iter_keyed_siphashes13_from_value(value, key0, key1);
+        for i in 0..PERMUTATIONS {
+            self.words[i] = self.words[i].min(unsafe { hashes.next().unwrap_unchecked() });
         }
     }
 
@@ -274,9 +279,13 @@ where
     /// ```
     ///
     pub fn may_contain_value_with_fnv<H: Hash>(&self, value: H) -> bool {
-        self.iter()
-            .zip(Self::iter_fnv_from_value(value))
-            .all(|(word, hash)| word.is_min(hash))
+        let mut hashes = Self::iter_fnv_from_value(value);
+        for i in 0..PERMUTATIONS {
+            if self.words[i] > unsafe { hashes.next().unwrap_unchecked() } {
+                return false;
+            }
+        }
+        true
     }
 
     /// Insert a value into the MinHash using the FNV.
@@ -300,8 +309,9 @@ where
     /// assert!(minhash.may_contain_value_with_fnv(47));
     /// ```
     pub fn insert_with_fnv<H: Hash>(&mut self, value: H) {
-        for (word, hash) in self.iter_mut().zip(Self::iter_fnv_from_value(value)) {
-            word.set_min(hash);
+        let mut hashes = Self::iter_fnv_from_value(value);
+        for i in 0..PERMUTATIONS {
+            self.words[i] = self.words[i].min(unsafe { hashes.next().unwrap_unchecked() });
         }
     }
 
@@ -331,11 +341,14 @@ where
     /// minhash.insert_with_keyed_fnv(47, key);
     /// assert!(minhash.may_contain_value_with_keyed_fnv(47, key));
     /// ```
-    ///
     pub fn may_contain_value_with_keyed_fnv<H: Hash>(&self, value: H, key: u64) -> bool {
-        self.iter()
-            .zip(Self::iter_keyed_fnv_from_value(value, key))
-            .all(|(word, hash)| word.is_min(hash))
+        let mut hashes = Self::iter_keyed_fnv_from_value(value, key);
+        for i in 0..PERMUTATIONS {
+            if self.words[i] > unsafe { hashes.next().unwrap_unchecked() } {
+                return false;
+            }
+        }
+        true
     }
 
     /// Insert a value into the MinHash using the keyed FNV.
@@ -361,11 +374,9 @@ where
     /// assert!(minhash.may_contain_value_with_keyed_fnv(47, key));
     /// ```
     pub fn insert_with_keyed_fnv<H: Hash>(&mut self, value: H, key: u64) {
-        for (word, hash) in self
-            .iter_mut()
-            .zip(Self::iter_keyed_fnv_from_value(value, key))
-        {
-            word.set_min(hash);
+        let mut hashes = Self::iter_keyed_fnv_from_value(value, key);
+        for i in 0..PERMUTATIONS {
+            self.words[i] = self.words[i].min(unsafe { hashes.next().unwrap_unchecked() });
         }
     }
 }
@@ -421,6 +432,17 @@ impl<Word, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
     ///
     pub fn memory(&self) -> usize {
         PERMUTATIONS * core::mem::size_of::<Word>() * 8
+    }
+}
+
+/// Fast element-wise min for `Copy + Ord` word types.
+impl<Word: Ord + Copy, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
+    /// Apply `self[i] = self[i].min(rhs[i])` for all permutations.
+    /// Uses a tight indexed loop so that LLVM can auto-vectorize.
+    pub(crate) fn min_assign(&mut self, rhs: &Self) {
+        for i in 0..PERMUTATIONS {
+            self.words[i] = self.words[i].min(rhs.words[i]);
+        }
     }
 }
 

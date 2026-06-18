@@ -9,21 +9,23 @@ homepage = "https://github.com/LucaCappelletti94/minhash-rs"
 repository = "https://github.com/LucaCappelletti94/minhash-rs"
 readme = "README.md"
 license = "MIT"
-keywords = ["minhash", "probabilistic", "algorithm", "cardinality", "estimation",]
-categories = [
-    "no-std",
-    "algorithms",
-    "science"
+keywords = [
+  "minhash",
+  "probabilistic",
+  "algorithm",
+  "cardinality",
+  "estimation",
 ]
+categories = ["no-std", "algorithms", "science"]
 # Keep the published package lean: the figures, benchmark datasets, diagrams and
 # CI config are only useful in the repository, not to downstream consumers.
 exclude = [
-    "figures/",
-    "tests/*.csv.gz",
-    "tests/partial/",
-    "minhash_diagram.jpg",
-    "minhash_diagram.drawio",
-    ".github/",
+  "figures/",
+  "tests/*.csv.gz",
+  "tests/partial/",
+  "minhash_diagram.jpg",
+  "minhash_diagram.drawio",
+  ".github/",
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -48,7 +50,7 @@ cast_precision_loss = "allow"
 transmute_ptr_to_ptr = "allow"
 
 [dependencies]
-siphasher = { version = "0.3", default-features = false }
+siphasher = { version = "1.0", default-features = false }
 fnv = { version = "1.0.3", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde-big-array = "0.5"

@@ -4,7 +4,7 @@ use core::hash::Hash;
 
 use crate::prelude::{Maximal, Min, MinHash, Primitive, XorShift};
 
-impl<Word: Min + Clone + Eq + Maximal + XorShift, A: Hash, const PERMUTATATIONS: usize>
+impl<Word: Min + Ord + Clone + Eq + Maximal + XorShift, A: Hash, const PERMUTATATIONS: usize>
     core::iter::FromIterator<A> for MinHash<Word, PERMUTATATIONS>
 where
     u64: Primitive<Word>,

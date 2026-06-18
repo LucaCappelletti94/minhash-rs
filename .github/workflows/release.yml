@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    environment: crates.io
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Verify package before publishing
+        run: cargo publish --dry-run --allow-dirty
+      - name: Publish to crates.io
+        # Requires CARGO_REGISTRY_TOKEN to be set via the
+        # CARGO_REGISTRY_TOKEN environment variable (from the
+        # CARGO_REGISTRY_TOKEN secret). Skip the step if the token is
+        # not configured yet.
+        if: env.CARGO_REGISTRY_TOKEN != ''
+        run: cargo publish

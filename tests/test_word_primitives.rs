@@ -69,7 +69,35 @@ fn is_min_reflects_the_ordering() {
 }
 
 #[test]
-fn set_min_keeps_the_smaller_value() {
+fn set_min_keeps_the_smaller_value_usize() {
+    let mut w = 5_usize;
+    w.set_min(2);
+    assert_eq!(w, 2);
+}
+
+#[test]
+fn set_min_keeps_the_smaller_value_u64() {
+    let mut w = 5_u64;
+    w.set_min(2);
+    assert_eq!(w, 2);
+}
+
+#[test]
+fn set_min_keeps_the_smaller_value_u16() {
+    let mut w = 5_u16;
+    w.set_min(2);
+    assert_eq!(w, 2);
+}
+
+#[test]
+fn set_min_keeps_the_smaller_value_u8() {
+    let mut w = 5_u8;
+    w.set_min(2);
+    assert_eq!(w, 2);
+}
+
+#[test]
+fn set_min_keeps_the_smaller_value_u32() {
     let mut w = 5_u32;
     w.set_min(9);
     assert_eq!(w, 5);

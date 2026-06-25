@@ -53,10 +53,11 @@ impl<const BANDS: usize> Iterator for BandMatches<'_, BANDS> {
     type Item = usize;
 
     fn next(&mut self) -> Option<usize> {
-        while self.idx < BANDS {
-            let i = self.idx;
-            self.idx += 1;
+        let start = self.idx;
+        self.idx = BANDS;
+        for i in start..BANDS {
             if self.a[i] == self.b[i] {
+                self.idx = i + 1;
                 return Some(i);
             }
         }

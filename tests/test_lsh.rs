@@ -103,7 +103,14 @@ fn band_matches_all_indices_for_identical_signatures() {
 
     let left_bands = left.band_hashes::<16>();
     let right_bands = right.band_hashes::<16>();
-    let matches: Vec<usize> = BandMatches::new(&left_bands, &right_bands).collect();
+    let matches: Vec<usize> = BandMatches::new(&left_bands, &right_bands)
+        .take(17)
+        .collect();
+    assert_eq!(
+        matches.len(),
+        16,
+        "iterator should yield exactly 16 matches, not more"
+    );
     assert_eq!(matches, (0..16).collect::<Vec<_>>());
 }
 #[test]
@@ -120,7 +127,14 @@ fn band_matches_partial_overlap() {
     right_bands[14] = right_bands[14].wrapping_add(1);
     right_bands[15] = right_bands[15].wrapping_add(1);
 
-    let matches: Vec<usize> = BandMatches::new(&left_bands, &right_bands).collect();
+    let matches: Vec<usize> = BandMatches::new(&left_bands, &right_bands)
+        .take(17)
+        .collect();
+    assert_eq!(
+        matches.len(),
+        12,
+        "iterator should yield exactly 12 matches, not more"
+    );
     assert_eq!(matches, (0..12).collect::<Vec<_>>());
 }
 
@@ -131,7 +145,77 @@ fn band_matches_empty_when_no_overlap() {
 
     let left_bands = left.band_hashes::<16>();
     let right_bands = right.band_hashes::<16>();
-    let matches: Vec<usize> = BandMatches::new(&left_bands, &right_bands).collect();
+    let matches: Vec<usize> = BandMatches::new(&left_bands, &right_bands)
+        .take(17)
+        .collect();
+    assert_eq!(matches.len(), 0, "iterator should yield no matches");
+}
+#[test]
+fn band_matches_no_false_positives_on_non_matching() {
+    let left: MinHash<u64, PERMUTATIONS> = (0..100u64).collect();
+    let right: MinHash<u64, PERMUTATIONS> = (100..200u64).collect();
 
-    assert!(matches.is_empty());
+    let left_bands = left.band_hashes::<4>();
+    let right_bands = right.band_hashes::<4>();
+
+    let mut iter = BandMatches::new(&left_bands, &right_bands);
+
+    // With 4 bands and no matches, next must return None immediately.
+    // This catches mutants that cause the iterator to spin on a non-matching band.
+    assert!(iter.next().is_none());
+}
+#[test]
+fn band_matches_exhaustion_returns_none() {
+    let left: MinHash<u64, PERMUTATIONS> = (0..100u64).collect();
+    let right: MinHash<u64, PERMUTATIONS> = (0..100u64).collect();
+
+    let left_bands = left.band_hashes::<16>();
+    let right_bands = right.band_hashes::<16>();
+
+    let mut iter = BandMatches::new(&left_bands, &right_bands);
+
+    // Consume all 16 matches.
+    for _ in 0..16 {
+        assert!(iter.next().is_some());
+    }
+
+    // After exhausting all bands, next must return None.
+    // This catches mutants that make next always return Some.
+    assert!(iter.next().is_none());
+}
+
+#[test]
+fn band_matches_size_hint_shrinks() {
+    let left: MinHash<u64, PERMUTATIONS> = (0..100u64).collect();
+    let right: MinHash<u64, PERMUTATIONS> = (0..100u64).collect();
+
+    let left_bands = left.band_hashes::<4>();
+    let right_bands = right.band_hashes::<4>();
+
+    let mut iter = BandMatches::new(&left_bands, &right_bands);
+
+    // Initial hint: at most 4 remaining.
+    let (lower, upper) = iter.size_hint();
+    assert_eq!(lower, 0);
+    assert_eq!(upper, Some(4));
+
+    // After one step, at most 3 remaining.
+    iter.next();
+    let (lower, upper) = iter.size_hint();
+    assert_eq!(lower, 0);
+    assert_eq!(upper, Some(3));
+
+    // After two steps, at most 2 remaining.
+    iter.next();
+    let (lower, upper) = iter.size_hint();
+    assert_eq!(lower, 0);
+    assert_eq!(upper, Some(2));
+
+    // Exhaust the rest and verify zero remaining.
+    for _ in 0..2 {
+        iter.next();
+    }
+    let (lower, upper) = iter.size_hint();
+    assert_eq!(lower, 0);
+    assert_eq!(upper, Some(0));
 }

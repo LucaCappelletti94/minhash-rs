@@ -51,7 +51,6 @@ jobs:
         # thumbv6m has no atomic CAS, so this checks the target_has_atomic gating:
         # the core sketch must compile even when the atomic API is unavailable.
         run: cargo build --target thumbv6m-none-eabi
-
   msrv:
     runs-on: ubuntu-latest
 

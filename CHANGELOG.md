@@ -3,6 +3,12 @@
 All notable changes to this project are documented in this file. The format is
 loosely based on Keep a Changelog, and the project follows semantic versioning.
 
+## Unreleased
+
+### Added
+
+- `lsh` module providing locality-sensitive hashing banding for signatures. `MinHash::band_hashes::<BANDS>()` splits a signature into `BANDS` equal-sized bands and returns the FNV-1a `band_hash` of each, the standard primitive for turning MinHash sketches into near-duplicate candidate pairs.
+
 ## 0.3.0
 
 This release contains several breaking changes alongside correctness fixes,

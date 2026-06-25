@@ -3,6 +3,7 @@
 
 pub mod atomic;
 pub mod from_iter;
+pub mod lsh;
 pub mod maximal;
 pub mod min;
 pub mod minhash;
@@ -15,6 +16,7 @@ pub mod xorshift;
 /// Re-exports of the traits and types needed to use the crate.
 pub mod prelude {
     pub use crate::atomic::*;
+    pub use crate::lsh::*;
     pub use crate::maximal::Maximal;
     pub use crate::min::Min;
     pub use crate::minhash::MinHash;

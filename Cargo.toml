@@ -49,6 +49,7 @@ cast_precision_loss = "allow"
 # The atomic view in `as_atomic` is an audited &mut [Word] -> &[Atomic] reinterpret.
 transmute_ptr_to_ptr = "allow"
 
+
 [dependencies]
 siphasher = { version = "1.0", default-features = false }
 fnv = { version = "1.0.3", default-features = false }

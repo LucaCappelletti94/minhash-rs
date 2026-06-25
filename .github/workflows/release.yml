@@ -5,49 +5,61 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Wait for all status checks on the tagged commit to pass before
-  # allowing the publish to proceed. This prevents publishing from
-  # commits that haven't finished CI or have failed jobs.
-  check:
+  verify-version:
+    name: Verify tag matches version
     runs-on: ubuntu-latest
+
     steps:
-      - name: Check commit status
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check tag against Cargo.toml version
         run: |
-          # Query the combined status for the tagged commit.
-          # Fails the job if the state is not "success".
-          STATUS=$(gh api repos/${{ github.repository }}/commits/${{ github.sha }}/status \
-            --jq '.state')
-          if [ "$STATUS" != "success" ]; then
-            echo "Commit status is $STATUS, not success. Aborting release."
+          tag="${GITHUB_REF_NAME#v}"
+          manifest="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')"
+          echo "tag version: $tag"
+          echo "manifest version: $manifest"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::tag $tag does not match Cargo.toml version $manifest"
             exit 1
           fi
 
-  publish:
-    needs: check
-    runs-on: ubuntu-latest
+  ci:
+    name: CI
+    needs: verify-version
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/rust.yml
+    secrets: inherit
 
-    environment: crates.io
-    env:
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+  publish:
+    name: Publish to crates.io
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
-      - uses: actions/checkout@v5
-      - name: Install stable Rust
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-      - name: Verify package before publishing
-        run: cargo publish --dry-run --allow-dirty
-      - name: Publish to crates.io
-        # Requires CARGO_REGISTRY_TOKEN to be set via the
-        # CARGO_REGISTRY_TOKEN environment variable (from the
-        # CARGO_REGISTRY_TOKEN secret). Skip the step if the token is
-        # not configured yet.
-        if: env.CARGO_REGISTRY_TOKEN != ''
-        run: cargo publish
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Authenticate to crates.io
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Publish crate
+        run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

@@ -31,36 +31,15 @@ jobs:
             exit 1
           fi
 
-  check:
-    name: Wait for CI
+  ci:
+    name: CI
     needs: verify-version
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Wait for CI to finish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for i in $(seq 1 30); do
-            STATUS=$(gh api repos/${{ github.repository }}/commits/${{ github.sha }}/status \
-              --jq '.state')
-            if [ "$STATUS" = "success" ]; then
-              echo "CI passed."
-              exit 0
-            fi
-            if [ "$STATUS" = "failure" ] || [ "$STATUS" = "error" ]; then
-              echo "CI failed with status $STATUS. Aborting release."
-              exit 1
-            fi
-            echo "Still pending (attempt $i/30)..."
-            sleep 60
-          done
-          echo "Timed out waiting for CI. Aborting release."
-          exit 1
+    uses: ./.github/workflows/rust.yml
+    secrets: inherit
 
   publish:
     name: Publish to crates.io
-    needs: check
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: read

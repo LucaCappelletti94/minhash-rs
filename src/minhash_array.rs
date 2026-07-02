@@ -35,18 +35,18 @@ impl<Word: Maximal, const PERMUTATIONS: usize, const N: usize> MinHashArray<Word
 }
 
 /// We also provide indexing for the MinHashArray.
-impl<W: Maximal, const PERMUTATIONS: usize, const N: usize> Index<usize>
-    for MinHashArray<W, PERMUTATIONS, N>
+impl<Word, const PERMUTATIONS: usize, const N: usize> Index<usize>
+    for MinHashArray<Word, PERMUTATIONS, N>
 {
-    type Output = MinHash<W, PERMUTATIONS>;
+    type Output = MinHash<Word, PERMUTATIONS>;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.counters[index]
     }
 }
 
-impl<W: Maximal, const PERMUTATIONS: usize, const N: usize> IndexMut<usize>
-    for MinHashArray<W, PERMUTATIONS, N>
+impl<Word, const PERMUTATIONS: usize, const N: usize> IndexMut<usize>
+    for MinHashArray<Word, PERMUTATIONS, N>
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.counters[index]

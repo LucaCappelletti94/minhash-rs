@@ -57,12 +57,17 @@ serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde-big-array = "0.5"
 
 [dev-dependencies]
+criterion = "0.8"
 serde_json = "1.0"
 rayon = "1.5"
 hyperloglog-rs = "0.1"
 indicatif = { version = "0.18", features = ["rayon"] }
 proptest = "1"
 
+# Criterion benchmark harness
+[[bench]]
+name = "bench_insert"
+harness = false
 # Optimize tests so the data-structure heavy tests run quickly, while keeping
 # overflow checks and debug assertions on to catch bugs.
 [profile.test]

@@ -6,12 +6,13 @@ use core::sync::atomic::Ordering;
 use fnv::FnvHasher;
 use siphasher::sip128::SipHasher13;
 
-use crate::prelude::*;
+use crate::prelude::{MinHash, Primitive, XorShift};
+use crate::splitmix::SplitMix;
 
 /// Generate `count` MinHash word hashes from `value` using the provided `hasher`.
 ///
-/// This is shared by both the non-atomic [`IterHashes`] machinery and the
-/// atomic insertion path so that the two stay byte-for-byte compatible.
+/// Used by the [`IterHashes`] trait for external consumers who need the
+/// hash stream as an iterator.
 ///
 /// Zero is never emitted. XorShift has zero as a fixed point, so a hash that
 /// ever reaches zero would stay zero for the rest of the stream. In particular,
@@ -71,7 +72,7 @@ pub trait AtomicFetchMin {
 /// Generates the per-permutation hash streams a MinHash uses for a value.
 pub trait IterHashes<Word, const PERMUTATIONS: usize>
 where
-    Word: Min + XorShift + Copy + Eq,
+    Word: XorShift + Copy + PartialEq,
     u64: Primitive<Word>,
 {
     /// Iterate on the hashes from the provided value and hasher.
@@ -185,7 +186,7 @@ where
     }
 }
 
-impl<Word: Min + XorShift + Copy + Eq, const PERMUTATIONS: usize> IterHashes<Word, PERMUTATIONS>
+impl<Word: XorShift + Copy + PartialEq, const PERMUTATIONS: usize> IterHashes<Word, PERMUTATIONS>
     for MinHash<Word, PERMUTATIONS>
 where
     u64: Primitive<Word>,
@@ -226,7 +227,13 @@ macro_rules! atomic_impls {
             type Word = $word;
 
             fn set_min(&self, value: Self::Word, ordering: Ordering) {
-                self.fetch_min(value, ordering);
+                let mut current = self.load(Ordering::Relaxed);
+                while value < current {
+                    match self.compare_exchange_weak(current, value, ordering, Ordering::Relaxed) {
+                        Ok(_) => break,
+                        Err(observed) => current = observed,
+                    }
+                }
             }
         }
 
@@ -310,10 +317,21 @@ where
     type Word = A::Word;
 
     fn fetch_insert_with_siphashes13<H: Hash>(&self, value: H, ordering: Ordering) {
-        for (word, hash) in self
-            .iter()
-            .zip(iter_word_hashes(value, SipHasher13::new(), self.len()))
-        {
+        let zero: A::Word = 0u64.convert();
+        let one: A::Word = 1u64.convert();
+
+        let mut hasher = SipHasher13::new();
+        value.hash(&mut hasher);
+        let mut hash: A::Word = hasher.finish().splitmix().splitmix().convert();
+        if hash == zero {
+            hash = one;
+        }
+
+        for word in self {
+            hash = hash.xorshift();
+            if hash == zero {
+                hash = one;
+            }
             word.set_min(hash, ordering);
         }
     }
@@ -325,30 +343,61 @@ where
         key1: u64,
         ordering: Ordering,
     ) {
-        for (word, hash) in self.iter().zip(iter_word_hashes(
-            value,
-            SipHasher13::new_with_keys(key0, key1),
-            self.len(),
-        )) {
+        let zero: A::Word = 0u64.convert();
+        let one: A::Word = 1u64.convert();
+
+        let mut hasher = SipHasher13::new_with_keys(key0, key1);
+        value.hash(&mut hasher);
+        let mut hash: A::Word = hasher.finish().splitmix().splitmix().convert();
+        if hash == zero {
+            hash = one;
+        }
+
+        for word in self {
+            hash = hash.xorshift();
+            if hash == zero {
+                hash = one;
+            }
             word.set_min(hash, ordering);
         }
     }
 
     fn fetch_insert_with_fnv<H: Hash>(&self, value: H, ordering: Ordering) {
-        for (word, hash) in
-            self.iter()
-                .zip(iter_word_hashes(value, FnvHasher::default(), self.len()))
-        {
+        let zero: A::Word = 0u64.convert();
+        let one: A::Word = 1u64.convert();
+
+        let mut hasher = FnvHasher::default();
+        value.hash(&mut hasher);
+        let mut hash: A::Word = hasher.finish().splitmix().splitmix().convert();
+        if hash == zero {
+            hash = one;
+        }
+
+        for word in self {
+            hash = hash.xorshift();
+            if hash == zero {
+                hash = one;
+            }
             word.set_min(hash, ordering);
         }
     }
 
     fn fetch_insert_with_keyed_fnv<H: Hash>(&self, value: H, key: u64, ordering: Ordering) {
-        for (word, hash) in self.iter().zip(iter_word_hashes(
-            value,
-            FnvHasher::with_key(key),
-            self.len(),
-        )) {
+        let zero: A::Word = 0u64.convert();
+        let one: A::Word = 1u64.convert();
+
+        let mut hasher = FnvHasher::with_key(key);
+        value.hash(&mut hasher);
+        let mut hash: A::Word = hasher.finish().splitmix().splitmix().convert();
+        if hash == zero {
+            hash = one;
+        }
+
+        for word in self {
+            hash = hash.xorshift();
+            if hash == zero {
+                hash = one;
+            }
             word.set_min(hash, ordering);
         }
     }

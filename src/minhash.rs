@@ -1,15 +1,13 @@
 //! Module providing the MinHash data structure.
 
-use crate::{
-    atomic::IterHashes,
-    prelude::{Min, Primitive},
-    xorshift::XorShift,
-};
-use core::hash::Hash;
+use crate::{prelude::Primitive, splitmix::SplitMix, xorshift::XorShift};
+use core::hash::{Hash, Hasher};
 use core::ops::Index;
 use core::ops::IndexMut;
+use fnv::FnvHasher;
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
+use siphasher::sip128::SipHasher13;
 
 use crate::prelude::Maximal;
 
@@ -58,8 +56,7 @@ impl<Word: Maximal, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
     }
 }
 
-impl<Word: Min + XorShift + Copy + Eq + Maximal, const PERMUTATIONS: usize>
-    MinHash<Word, PERMUTATIONS>
+impl<Word: Copy + PartialEq + Maximal, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS>
 where
     u64: Primitive<Word>,
 {
@@ -111,9 +108,8 @@ where
     }
 }
 
-impl<Word: Min + Ord + XorShift + Copy + Eq, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS>
+impl<Word: Ord + XorShift + Copy, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS>
 where
-    Self: IterHashes<Word, PERMUTATIONS>,
     u64: Primitive<Word>,
 {
     /// Returns whether the MinHash may contain the provided value, using the SipHasher13.
@@ -142,13 +138,9 @@ where
     /// ```
     ///
     pub fn may_contain_value_with_siphashes13<H: Hash>(&self, value: H) -> bool {
-        let mut hashes = Self::iter_siphashes13_from_value(value);
-        for i in 0..PERMUTATIONS {
-            if self.words[i] > unsafe { hashes.next().unwrap_unchecked() } {
-                return false;
-            }
-        }
-        true
+        let mut hasher = SipHasher13::new();
+        value.hash(&mut hasher);
+        Self::check_hash_stream(&self.words, hasher.finish())
     }
 
     /// Insert a value into the MinHash using the SipHasher13.
@@ -172,10 +164,9 @@ where
     /// assert!(minhash.may_contain_value_with_siphashes13(47));
     /// ```
     pub fn insert_with_siphashes13<H: Hash>(&mut self, value: H) {
-        let mut hashes = Self::iter_siphashes13_from_value(value);
-        for i in 0..PERMUTATIONS {
-            self.words[i] = self.words[i].min(unsafe { hashes.next().unwrap_unchecked() });
-        }
+        let mut hasher = SipHasher13::new();
+        value.hash(&mut hasher);
+        Self::insert_hash_stream(&mut self.words, hasher.finish());
     }
 
     /// Returns whether the MinHash may contain the provided value, using the keyed SipHasher13.
@@ -213,13 +204,9 @@ where
         key0: u64,
         key1: u64,
     ) -> bool {
-        let mut hashes = Self::iter_keyed_siphashes13_from_value(value, key0, key1);
-        for i in 0..PERMUTATIONS {
-            if self.words[i] > unsafe { hashes.next().unwrap_unchecked() } {
-                return false;
-            }
-        }
-        true
+        let mut hasher = SipHasher13::new_with_keys(key0, key1);
+        value.hash(&mut hasher);
+        Self::check_hash_stream(&self.words, hasher.finish())
     }
 
     /// Insert a value into the MinHash using the keyed SipHasher13.
@@ -247,10 +234,9 @@ where
     /// assert!(minhash.may_contain_value_with_keyed_siphashes13(47, key0, key1));
     /// ```
     pub fn insert_with_keyed_siphashes13<H: Hash>(&mut self, value: H, key0: u64, key1: u64) {
-        let mut hashes = Self::iter_keyed_siphashes13_from_value(value, key0, key1);
-        for i in 0..PERMUTATIONS {
-            self.words[i] = self.words[i].min(unsafe { hashes.next().unwrap_unchecked() });
-        }
+        let mut hasher = SipHasher13::new_with_keys(key0, key1);
+        value.hash(&mut hasher);
+        Self::insert_hash_stream(&mut self.words, hasher.finish());
     }
 
     /// Returns whether the MinHash may contain the provided value, using the FNV.
@@ -279,13 +265,9 @@ where
     /// ```
     ///
     pub fn may_contain_value_with_fnv<H: Hash>(&self, value: H) -> bool {
-        let mut hashes = Self::iter_fnv_from_value(value);
-        for i in 0..PERMUTATIONS {
-            if self.words[i] > unsafe { hashes.next().unwrap_unchecked() } {
-                return false;
-            }
-        }
-        true
+        let mut hasher = FnvHasher::default();
+        value.hash(&mut hasher);
+        Self::check_hash_stream(&self.words, hasher.finish())
     }
 
     /// Insert a value into the MinHash using the FNV.
@@ -309,10 +291,9 @@ where
     /// assert!(minhash.may_contain_value_with_fnv(47));
     /// ```
     pub fn insert_with_fnv<H: Hash>(&mut self, value: H) {
-        let mut hashes = Self::iter_fnv_from_value(value);
-        for i in 0..PERMUTATIONS {
-            self.words[i] = self.words[i].min(unsafe { hashes.next().unwrap_unchecked() });
-        }
+        let mut hasher = FnvHasher::default();
+        value.hash(&mut hasher);
+        Self::insert_hash_stream(&mut self.words, hasher.finish());
     }
 
     /// Returns whether the MinHash may contain the provided value, using the keyed FNV.
@@ -342,13 +323,9 @@ where
     /// assert!(minhash.may_contain_value_with_keyed_fnv(47, key));
     /// ```
     pub fn may_contain_value_with_keyed_fnv<H: Hash>(&self, value: H, key: u64) -> bool {
-        let mut hashes = Self::iter_keyed_fnv_from_value(value, key);
-        for i in 0..PERMUTATIONS {
-            if self.words[i] > unsafe { hashes.next().unwrap_unchecked() } {
-                return false;
-            }
-        }
-        true
+        let mut hasher = FnvHasher::with_key(key);
+        value.hash(&mut hasher);
+        Self::check_hash_stream(&self.words, hasher.finish())
     }
 
     /// Insert a value into the MinHash using the keyed FNV.
@@ -374,10 +351,62 @@ where
     /// assert!(minhash.may_contain_value_with_keyed_fnv(47, key));
     /// ```
     pub fn insert_with_keyed_fnv<H: Hash>(&mut self, value: H, key: u64) {
-        let mut hashes = Self::iter_keyed_fnv_from_value(value, key);
-        for i in 0..PERMUTATIONS {
-            self.words[i] = self.words[i].min(unsafe { hashes.next().unwrap_unchecked() });
+        let mut hasher = FnvHasher::with_key(key);
+        value.hash(&mut hasher);
+        Self::insert_hash_stream(&mut self.words, hasher.finish());
+    }
+
+    /// Insert a hash stream into the given words array.
+    ///
+    /// This is the hot path shared by all insert methods: derive a seed from
+    /// SplitMix64, advance through XorShift permutations, and take the per-register
+    /// minimum. Stores are conditional so that mature sketches (where new hashes
+    /// rarely beat current minima) avoid unnecessary writes.
+    #[inline(always)]
+    #[allow(clippy::inline_always)]
+    fn insert_hash_stream(words: &mut [Word; PERMUTATIONS], seed: u64) {
+        let zero: Word = 0u64.convert();
+        let one: Word = 1u64.convert();
+
+        let mut hash: Word = seed.splitmix().splitmix().convert();
+        if hash == zero {
+            hash = one;
         }
+
+        for word in words {
+            hash = hash.xorshift();
+            if hash == zero {
+                hash = one;
+            }
+            if hash < *word {
+                *word = hash;
+            }
+        }
+    }
+
+    /// Check whether all words are less than or equal to their corresponding
+    /// hash stream values. Shared by all may_contain_value methods.
+    #[inline(always)]
+    #[allow(clippy::inline_always)]
+    fn check_hash_stream(words: &[Word; PERMUTATIONS], seed: u64) -> bool {
+        let zero: Word = 0u64.convert();
+        let one: Word = 1u64.convert();
+
+        let mut hash: Word = seed.splitmix().splitmix().convert();
+        if hash == zero {
+            hash = one;
+        }
+
+        for &word in words {
+            hash = hash.xorshift();
+            if hash == zero {
+                hash = one;
+            }
+            if word > hash {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -446,7 +475,7 @@ impl<Word: Ord + Copy, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
     }
 }
 
-impl<Word: Eq, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
+impl<Word: PartialEq, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
     /// Calculate the similarity between two MinHashes.
     ///
     /// # Arguments
@@ -508,7 +537,7 @@ impl<Word, const PERMUTATIONS: usize> AsMut<[Word]> for MinHash<Word, PERMUTATIO
 }
 
 /// We also provide indexing for the MinHash.
-impl<W: Maximal, const PERMUTATIONS: usize> Index<usize> for MinHash<W, PERMUTATIONS> {
+impl<W, const PERMUTATIONS: usize> Index<usize> for MinHash<W, PERMUTATIONS> {
     type Output = W;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -516,7 +545,7 @@ impl<W: Maximal, const PERMUTATIONS: usize> Index<usize> for MinHash<W, PERMUTAT
     }
 }
 
-impl<W: Maximal, const PERMUTATIONS: usize> IndexMut<usize> for MinHash<W, PERMUTATIONS> {
+impl<W, const PERMUTATIONS: usize> IndexMut<usize> for MinHash<W, PERMUTATIONS> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.words[index]
     }

@@ -1,9 +1,8 @@
-//! Exact-value tests for the per-word `XorShift`, `Primitive` and `Min` impls.
+//! Exact-value tests for the per-word `XorShift` and `Primitive` impls.
 //!
 //! The sketch tests only assert statistical invariants, leaving the low-level
 //! word operations free to be subtly wrong unnoticed. These pin each impl
 //! against an independent reference. Golden values were computed from the
-//! xorshift recurrence; usize routes through u64 and u16 through u32.
 
 use minhash_rs::prelude::*;
 
@@ -47,60 +46,4 @@ fn primitive_convert_narrows_to_the_low_bits() {
     assert_eq!(Primitive::<u32>::convert(value), 0x1234_ABCD);
     assert_eq!(Primitive::<u64>::convert(value), value);
     assert_eq!(Primitive::<usize>::convert(value), value as usize);
-}
-
-#[test]
-fn is_min_reflects_the_ordering() {
-    assert!(Min::is_min(&3_usize, 5));
-    assert!(Min::is_min(&5_usize, 5));
-    assert!(!Min::is_min(&5_usize, 3));
-
-    assert!(Min::is_min(&3_u64, 5));
-    assert!(!Min::is_min(&5_u64, 3));
-
-    assert!(Min::is_min(&3_u32, 5));
-    assert!(!Min::is_min(&5_u32, 3));
-
-    assert!(Min::is_min(&3_u16, 5));
-    assert!(!Min::is_min(&5_u16, 3));
-
-    assert!(Min::is_min(&3_u8, 5));
-    assert!(!Min::is_min(&5_u8, 3));
-}
-
-#[test]
-fn set_min_keeps_the_smaller_value_usize() {
-    let mut w = 5_usize;
-    w.set_min(2);
-    assert_eq!(w, 2);
-}
-
-#[test]
-fn set_min_keeps_the_smaller_value_u64() {
-    let mut w = 5_u64;
-    w.set_min(2);
-    assert_eq!(w, 2);
-}
-
-#[test]
-fn set_min_keeps_the_smaller_value_u16() {
-    let mut w = 5_u16;
-    w.set_min(2);
-    assert_eq!(w, 2);
-}
-
-#[test]
-fn set_min_keeps_the_smaller_value_u8() {
-    let mut w = 5_u8;
-    w.set_min(2);
-    assert_eq!(w, 2);
-}
-
-#[test]
-fn set_min_keeps_the_smaller_value_u32() {
-    let mut w = 5_u32;
-    w.set_min(9);
-    assert_eq!(w, 5);
-    w.set_min(2);
-    assert_eq!(w, 2);
 }

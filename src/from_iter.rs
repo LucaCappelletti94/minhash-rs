@@ -2,9 +2,9 @@
 
 use core::hash::Hash;
 
-use crate::prelude::{Maximal, Min, MinHash, Primitive, XorShift};
+use crate::prelude::{Maximal, MinHash, Primitive, XorShift};
 
-impl<Word: Min + Ord + Clone + Eq + Maximal + XorShift, A: Hash, const PERMUTATATIONS: usize>
+impl<Word: Ord + Maximal + XorShift, A: Hash, const PERMUTATATIONS: usize>
     core::iter::FromIterator<A> for MinHash<Word, PERMUTATATIONS>
 where
     u64: Primitive<Word>,
@@ -25,10 +25,10 @@ where
     ///
     /// ```
     fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
-        let mut hll = Self::new();
+        let mut minhash = Self::new();
         for item in iter {
-            hll.insert_with_siphashes13(item);
+            minhash.insert_with_siphashes13(item);
         }
-        hll
+        minhash
     }
 }

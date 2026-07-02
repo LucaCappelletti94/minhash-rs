@@ -4,8 +4,7 @@ use minhash_rs::prelude::*;
 
 fn roundtrip_minhash<Word, const PERMUTATIONS: usize>(values: &[u64])
 where
-    Word: Min
-        + XorShift
+    Word: XorShift
         + Copy
         + Ord
         + Eq

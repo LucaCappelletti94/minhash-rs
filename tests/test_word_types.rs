@@ -12,7 +12,7 @@ use minhash_rs::prelude::*;
 
 fn no_false_negatives<Word, const PERMUTATIONS: usize>(values: &[u64])
 where
-    Word: Min + XorShift + Copy + Ord + Eq + Maximal,
+    Word: XorShift + Copy + Ord + Maximal,
     u64: Primitive<Word>,
 {
     let mut mh = MinHash::<Word, PERMUTATIONS>::new();

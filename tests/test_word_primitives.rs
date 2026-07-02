@@ -47,3 +47,41 @@ fn primitive_convert_narrows_to_the_low_bits() {
     assert_eq!(Primitive::<u64>::convert(value), value);
     assert_eq!(Primitive::<usize>::convert(value), value as usize);
 }
+
+#[test]
+fn zero_is_never_emitted_by_the_hash_stream() {
+    // u8 xorshift can produce zero from nonzero input (e.g. 128 -> 0).
+    // The hash stream must remap zero to one so the sketch stays non-degenerate.
+    let mut mh = MinHash::<u8, 16>::new();
+    // Insert enough values to trigger zero in the xorshift stream.
+    // 128_u8.xorshift() == 0, so any seed that derives to 128 will hit zero.
+    for i in 0..=255u8 {
+        mh.insert_with_fnv(u64::from(i));
+    }
+    // No word should be zero (zero is remapped to one).
+    for &word in mh.as_ref() {
+        assert_ne!(word, 0, "zero leaked into MinHash words");
+    }
+    // The sketch should not be empty (inserts produced valid hashes).
+    assert!(!mh.is_empty());
+}
+
+#[test]
+fn hash_stream_produces_diverse_values() {
+    // If the zero-check guard were inverted (== -> !=), all non-zero hashes
+    // would be remapped to one, making every sketch identical and Jaccard
+    // estimates collapse to 1.0 regardless of actual similarity.
+    let mut a = MinHash::<u64, 128>::new();
+    let mut b = MinHash::<u64, 128>::new();
+
+    for i in 0..1000u64 {
+        a.insert_with_fnv(i);
+    }
+    for i in 1000..2000u64 {
+        b.insert_with_fnv(i);
+    }
+
+    // Two disjoint sets should have Jaccard near 0, not 1.
+    let jaccard = a.estimate_jaccard_index(&b);
+    assert!(jaccard < 0.1, "Jaccard {jaccard} is too high for disjoint sets");
+}

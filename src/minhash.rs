@@ -23,14 +23,14 @@ use crate::prelude::Maximal;
 ///   [`Default`].
 /// - **Sparse mode** (`words[0] == 0`): stores SipHash/FNV digests in a
 ///   zero-terminated sorted list at `words[1..]`. Permutation expansion is
-///   deferred until densification. Created via [`new_sparse()`].
+///   deferred until densification. Created via [`sparse()`].
 ///
 /// Dense mode works for all supported word types. Sparse mode is only
 /// meaningful for `Word = u64` or `usize` on 64-bit platforms (narrow words
 /// cannot store full `u64` digests without truncation).
 ///
 /// [`new()`]: MinHash::new
-/// [`new_sparse()`]: MinHash::new_sparse
+/// [`sparse()`]: MinHash::sparse
 #[repr(transparent)]
 #[allow(clippy::unsafe_derive_deserialize)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -163,12 +163,12 @@ where
     /// ```
     /// use minhash_rs::prelude::*;
     ///
-    /// let mut minhash = MinHash::<u64, 128>::new_sparse();
+    /// let mut minhash = MinHash::<u64, 128>::sparse();
     /// minhash.insert_with_siphashes13(42);
     /// assert!(minhash.may_contain_value_with_siphashes13(42));
     /// ```
     #[must_use]
-    pub fn new_sparse() -> Self {
+    pub fn sparse() -> Self {
         let zero: Word = 0u64.convert();
         Self {
             words: [zero; PERMUTATIONS],
@@ -314,26 +314,40 @@ where
 
     // ── Sparse helpers ──────────────────────────────────────────────────────
 
+    /// Find the number of stored digests via reverse scan.
+    /// O(1) when full (last slot non-zero), O(n) when empty.
+    #[inline(always)]
+    #[allow(clippy::inline_always)]
+    fn sparse_len(&self) -> usize {
+        let zero: Word = 0u64.convert();
+        unsafe {
+            let ptr = self.words.as_ptr().add(1);
+            let mut i = PERMUTATIONS - 1;
+            while i > 0 {
+                if *ptr.add(i - 1) != zero {
+                    return i;
+                }
+                i -= 1;
+            }
+        }
+        0
+    }
+
     /// Insert an encoded digest into the sorted list. Densifies on overflow.
     ///
     /// The digest is stored as `digest.wrapping_add(1)` to reserve `0` as
     /// sentinel.
+    #[inline(always)]
+    #[allow(clippy::inline_always)]
     fn sparse_insert_digest(&mut self, digest: u64) {
         let zero: Word = 0u64.convert();
         let encoded: Word = digest.wrapping_add(1).convert();
+        let len = self.sparse_len();
 
-        // Length via reverse scan: O(1) when full, O(n) when empty.
-        let len = self.words[1..]
-            .iter()
-            .rposition(|&w| w != zero)
-            .map_or(0, |i| i + 1);
-
-        // Binary search in the sorted digest list.
-        let list = &self.words[1..=len];
-        if list.binary_search(&encoded).is_ok() {
+        // Single binary search: Ok means duplicate, Err gives insertion pos.
+        let Err(pos) = self.words[1..=len].binary_search(&encoded) else {
             return;
-        }
-        let pos = list.binary_search(&encoded).unwrap_err();
+        };
 
         // Check capacity: PERMUTATIONS-1 digests fit in words[1..].
         if len >= PERMUTATIONS.saturating_sub(1) {
@@ -354,26 +368,12 @@ where
     }
 
     /// Check if an encoded digest is present in the sorted list.
+    #[inline(always)]
+    #[allow(clippy::inline_always)]
     fn sparse_contains_digest(&self, digest: u64) -> bool {
-        let zero: Word = 0u64.convert();
         let encoded: Word = digest.wrapping_add(1).convert();
-
-        let len = self.words[1..]
-            .iter()
-            .rposition(|&w| w != zero)
-            .map_or(0, |i| i + 1);
-
+        let len = self.sparse_len();
         self.words[1..=len].binary_search(&encoded).is_ok()
-    }
-
-    #[allow(dead_code)]
-    /// Count the number of stored digests.
-    fn sparse_len(&self) -> usize {
-        let zero: Word = 0u64.convert();
-        self.words[1..]
-            .iter()
-            .rposition(|&w| w != zero)
-            .map_or(0, |i| i + 1)
     }
 
     /// Exact Jaccard between two sparse sketches via sorted-list merge walk.
@@ -381,27 +381,20 @@ where
     /// Compares encoded values directly (wrapping_add(1) preserves order),
     /// avoiding decode overhead. Uses raw index loops instead of iterators.
     fn sparse_jaccard(&self, other: &Self) -> f64 {
-        let zero: Word = 0u64.convert();
+        let a_len = self.sparse_len();
+        let b_len = other.sparse_len();
 
-        let a_len = self.words[1..]
-            .iter()
-            .rposition(|&w| w != zero)
-            .map_or(0, |i| i + 1);
-        let b_len = other.words[1..]
-            .iter()
-            .rposition(|&w| w != zero)
-            .map_or(0, |i| i + 1);
-
-        let mut ai = 1usize;
-        let mut bi = 1usize;
+        let mut ai = 0usize;
+        let mut bi = 0usize;
         let mut intersection = 0usize;
         let mut union_count = 0usize;
 
-        let a_end = 1 + a_len;
-        let b_end = 1 + b_len;
+        let (a, b) = unsafe { (self.words.as_ptr().add(1), other.words.as_ptr().add(1)) };
 
-        while ai < a_end && bi < b_end {
-            match self.words[ai].cmp(&other.words[bi]) {
+        while ai < a_len && bi < b_len {
+            let aval = unsafe { *a.add(ai) };
+            let bval = unsafe { *b.add(bi) };
+            match aval.cmp(&bval) {
                 core::cmp::Ordering::Equal => {
                     intersection += 1;
                     union_count += 1;
@@ -418,7 +411,7 @@ where
                 }
             }
         }
-        union_count += (a_end - ai) + (b_end - bi);
+        union_count += (a_len - ai) + (b_len - bi);
 
         if union_count == 0 {
             return 1.0;
@@ -426,7 +419,6 @@ where
         intersection as f64 / union_count as f64
     }
 
-    #[allow(dead_code)]
     /// Merge another sparse sketch into this one.
     ///
     /// Merges both sorted digest lists into a single MaybeUninit buffer
@@ -435,14 +427,8 @@ where
     fn sparse_union(&mut self, other: &Self) {
         let zero: Word = 0u64.convert();
 
-        let a_len = self.words[1..]
-            .iter()
-            .rposition(|&w| w != zero)
-            .map_or(0, |i| i + 1);
-        let b_len = other.words[1..]
-            .iter()
-            .rposition(|&w| w != zero)
-            .map_or(0, |i| i + 1);
+        let a_len = self.sparse_len();
+        let b_len = other.sparse_len();
 
         let capacity = PERMUTATIONS.saturating_sub(1);
 
@@ -455,51 +441,52 @@ where
         }
 
         // Single merge buffer without zero-init.
-        // We only write the first (a_len + b_len) slots.
         #[allow(clippy::uninit_assumed_init)]
-        let mut buf: [Word; PERMUTATIONS] = unsafe {
-            core::mem::MaybeUninit::<[Word; PERMUTATIONS]>::uninit().assume_init()
-        };
+        let mut buf: [Word; PERMUTATIONS] =
+            unsafe { core::mem::MaybeUninit::<[Word; PERMUTATIONS]>::uninit().assume_init() };
 
-        let a = &self.words[1..=a_len];
-        let b = &other.words[1..=b_len];
+        let (a, b) = unsafe { (self.words.as_ptr().add(1), other.words.as_ptr().add(1)) };
 
         let (mut ai, mut bi) = (0usize, 0usize);
         let mut wi = 0usize;
 
         while ai < a_len && bi < b_len {
-            match a[ai].cmp(&b[bi]) {
-                core::cmp::Ordering::Less => {
-                    buf[wi] = a[ai];
-                    ai += 1;
-                    wi += 1;
-                }
+            let aval = unsafe { *a.add(ai) };
+            let bval = unsafe { *b.add(bi) };
+            match aval.cmp(&bval) {
                 core::cmp::Ordering::Equal => {
-                    buf[wi] = a[ai];
+                    buf[wi] = aval;
                     ai += 1;
                     bi += 1;
                     wi += 1;
                 }
+                core::cmp::Ordering::Less => {
+                    buf[wi] = aval;
+                    ai += 1;
+                    wi += 1;
+                }
                 core::cmp::Ordering::Greater => {
-                    buf[wi] = b[bi];
+                    buf[wi] = bval;
                     bi += 1;
                     wi += 1;
                 }
             }
         }
         while ai < a_len {
-            buf[wi] = a[ai];
+            buf[wi] = unsafe { *a.add(ai) };
             ai += 1;
             wi += 1;
         }
         while bi < b_len {
-            buf[wi] = b[bi];
+            buf[wi] = unsafe { *b.add(bi) };
             bi += 1;
             wi += 1;
         }
 
-        // Copy merged result back to words[1..].
-        self.words[1..=wi].copy_from_slice(&buf[..wi]);
+        unsafe {
+            let dst = self.words.as_mut_ptr().add(1);
+            core::ptr::copy_nonoverlapping(buf.as_ptr(), dst, wi);
+        }
 
         if wi + 1 < PERMUTATIONS {
             self.words[wi + 1] = zero;

@@ -9,14 +9,14 @@ use std::hash::{Hash, Hasher};
 
 #[test]
 fn sparse_constructor_starts_empty() {
-    let mh = MinHash::<u64, 128>::new_sparse();
+    let mh = MinHash::<u64, 128>::sparse();
     assert!(mh.is_empty());
     assert!(!mh.is_full());
 }
 
 #[test]
 fn sparse_no_false_negatives_siphash() {
-    let mut mh = MinHash::<u64, 128>::new_sparse();
+    let mut mh = MinHash::<u64, 128>::sparse();
     for i in 0..1000_u64 {
         mh.insert_with_siphashes13(i);
         assert!(
@@ -28,7 +28,7 @@ fn sparse_no_false_negatives_siphash() {
 
 #[test]
 fn sparse_no_false_negatives_fnv() {
-    let mut mh = MinHash::<u64, 128>::new_sparse();
+    let mut mh = MinHash::<u64, 128>::sparse();
     for i in 0..1000_u64 {
         mh.insert_with_fnv(i);
         assert!(mh.may_contain_value_with_fnv(i), "false negative for {i}");
@@ -37,7 +37,7 @@ fn sparse_no_false_negatives_fnv() {
 
 #[test]
 fn sparse_no_false_negatives_keyed() {
-    let mut mh = MinHash::<u64, 128>::new_sparse();
+    let mut mh = MinHash::<u64, 128>::sparse();
     let (key0, key1) = (0xA5A5_A5A5_A5A5_A5A5, 0x5A5A_5A5A_5A5A_5A5A);
     for i in 0..1000_u64 {
         mh.insert_with_keyed_siphashes13(i, key0, key1);
@@ -50,7 +50,7 @@ fn sparse_no_false_negatives_keyed() {
 
 #[test]
 fn sparse_deduplicates() {
-    let mut mh = MinHash::<u64, 128>::new_sparse();
+    let mut mh = MinHash::<u64, 128>::sparse();
     for _ in 0..100 {
         mh.insert_with_siphashes13(42);
     }
@@ -61,8 +61,8 @@ fn sparse_deduplicates() {
 
 #[test]
 fn sparse_exact_jaccard_identical_sets() {
-    let mut a = MinHash::<u64, 128>::new_sparse();
-    let mut b = MinHash::<u64, 128>::new_sparse();
+    let mut a = MinHash::<u64, 128>::sparse();
+    let mut b = MinHash::<u64, 128>::sparse();
     for i in 0..100_u64 {
         a.insert_with_siphashes13(i);
         b.insert_with_siphashes13(i);
@@ -72,8 +72,8 @@ fn sparse_exact_jaccard_identical_sets() {
 
 #[test]
 fn sparse_exact_jaccard_disjoint_sets() {
-    let mut a = MinHash::<u64, 128>::new_sparse();
-    let mut b = MinHash::<u64, 128>::new_sparse();
+    let mut a = MinHash::<u64, 128>::sparse();
+    let mut b = MinHash::<u64, 128>::sparse();
     for i in 0..100_u64 {
         a.insert_with_siphashes13(i);
     }
@@ -85,8 +85,8 @@ fn sparse_exact_jaccard_disjoint_sets() {
 
 #[test]
 fn sparse_exact_jaccard_known_overlap() {
-    let mut a = MinHash::<u64, 128>::new_sparse();
-    let mut b = MinHash::<u64, 128>::new_sparse();
+    let mut a = MinHash::<u64, 128>::sparse();
+    let mut b = MinHash::<u64, 128>::sparse();
     for i in 0..100_u64 {
         a.insert_with_siphashes13(i);
     }
@@ -102,15 +102,15 @@ fn sparse_exact_jaccard_known_overlap() {
 
 #[test]
 fn sparse_exact_jaccard_empty_sets() {
-    let a = MinHash::<u64, 128>::new_sparse();
-    let b = MinHash::<u64, 128>::new_sparse();
+    let a = MinHash::<u64, 128>::sparse();
+    let b = MinHash::<u64, 128>::sparse();
     assert_eq!(a.estimate_jaccard_index(&b), 1.0);
 }
 
 #[test]
 fn sparse_dense_equivalent_after_same_insertions() {
     let values: Vec<u64> = (0..500).collect();
-    let mut sparse = MinHash::<u64, 128>::new_sparse();
+    let mut sparse = MinHash::<u64, 128>::sparse();
     let mut dense = MinHash::<u64, 128>::new();
     for &v in &values {
         sparse.insert_with_siphashes13(v);
@@ -134,8 +134,8 @@ fn sparse_dense_cross_mode_jaccard() {
     // Keep within sparse capacity (PERMUTATIONS-1 = 127)
     let values_a: Vec<u64> = (0..50).collect();
     let values_b: Vec<u64> = (25..75).collect();
-    let mut sparse_a = MinHash::<u64, 128>::new_sparse();
-    let mut sparse_b = MinHash::<u64, 128>::new_sparse();
+    let mut sparse_a = MinHash::<u64, 128>::sparse();
+    let mut sparse_b = MinHash::<u64, 128>::sparse();
     let mut dense_a = MinHash::<u64, 128>::new();
     let mut dense_b = MinHash::<u64, 128>::new();
     for &v in &values_a {
@@ -172,8 +172,8 @@ fn sparse_dense_cross_mode_jaccard() {
 
 #[test]
 fn sparse_union_stays_sparse_when_room() {
-    let mut a = MinHash::<u64, 128>::new_sparse();
-    let mut b = MinHash::<u64, 128>::new_sparse();
+    let mut a = MinHash::<u64, 128>::sparse();
+    let mut b = MinHash::<u64, 128>::sparse();
     for i in 0..50_u64 {
         a.insert_with_siphashes13(i);
     }
@@ -191,8 +191,8 @@ fn sparse_union_produces_correct_result() {
     let set_a: HashSet<u64> = (0..100).collect();
     let set_b: HashSet<u64> = (75..150).collect();
     let union_set: HashSet<u64> = set_a.union(&set_b).copied().collect();
-    let mut sparse_a = MinHash::<u64, 128>::new_sparse();
-    let mut sparse_b = MinHash::<u64, 128>::new_sparse();
+    let mut sparse_a = MinHash::<u64, 128>::sparse();
+    let mut sparse_b = MinHash::<u64, 128>::sparse();
     let mut dense_union = MinHash::<u64, 128>::new();
     for &v in &set_a {
         sparse_a.insert_with_siphashes13(v);
@@ -209,7 +209,7 @@ fn sparse_union_produces_correct_result() {
 
 #[test]
 fn dense_union_with_sparse_operand() {
-    let mut sparse = MinHash::<u64, 128>::new_sparse();
+    let mut sparse = MinHash::<u64, 128>::sparse();
     let mut dense = MinHash::<u64, 128>::new();
     for i in 0..100_u64 {
         sparse.insert_with_siphashes13(i);
@@ -227,7 +227,7 @@ fn dense_union_with_sparse_operand() {
 
 #[test]
 fn sparse_densifies_on_overflow() {
-    let mut mh = MinHash::<u64, 128>::new_sparse();
+    let mut mh = MinHash::<u64, 128>::sparse();
     for i in 0..200_u64 {
         mh.insert_with_siphashes13(i);
     }
@@ -240,7 +240,7 @@ fn sparse_densifies_on_overflow() {
 
 #[test]
 fn usize_sparse_mode() {
-    let mut mh = MinHash::<usize, 64>::new_sparse();
+    let mut mh = MinHash::<usize, 64>::sparse();
     for i in 0..100usize {
         mh.insert_with_siphashes13(i);
     }
@@ -249,7 +249,7 @@ fn usize_sparse_mode() {
 
 #[test]
 fn sparse_serde_roundtrip() {
-    let mut mh = MinHash::<u64, 128>::new_sparse();
+    let mut mh = MinHash::<u64, 128>::sparse();
     for i in 0..100_u64 {
         mh.insert_with_siphashes13(i);
     }
@@ -263,7 +263,7 @@ fn sparse_serde_roundtrip() {
 
 #[test]
 fn sparse_serde_preserves_mode() {
-    let mut mh = MinHash::<u64, 128>::new_sparse();
+    let mut mh = MinHash::<u64, 128>::sparse();
     for i in 0..10_u64 {
         mh.insert_with_siphashes13(i);
     }
@@ -276,7 +276,7 @@ fn sparse_serde_preserves_mode() {
 
 #[test]
 fn sparse_no_false_negatives_keyed_fnv() {
-    let mut mh = MinHash::<u64, 128>::new_sparse();
+    let mut mh = MinHash::<u64, 128>::sparse();
     let key = 0x0123_4567_89AB_CDEF;
     for i in 0..1000_u64 {
         mh.insert_with_keyed_fnv(i, key);
@@ -292,7 +292,7 @@ fn sparse_no_false_negatives_keyed_fnv() {
 #[test]
 fn sparse_is_full_at_capacity() {
     // PERMUTATIONS=16, capacity = 15
-    let mut mh = MinHash::<u64, 16>::new_sparse();
+    let mut mh = MinHash::<u64, 16>::sparse();
     assert!(!mh.is_full());
     for i in 0..15_u64 {
         mh.insert_with_siphashes13(i);
@@ -302,7 +302,7 @@ fn sparse_is_full_at_capacity() {
 
 #[test]
 fn sparse_is_full_after_densification() {
-    let mut mh = MinHash::<u64, 16>::new_sparse();
+    let mut mh = MinHash::<u64, 16>::sparse();
     for i in 0..100_000_u64 {
         mh.insert_with_siphashes13(i);
     }
@@ -313,7 +313,7 @@ fn sparse_is_full_after_densification() {
 
 #[test]
 fn sparse_band_hashes_after_densification() {
-    let mut sparse = MinHash::<u64, 128>::new_sparse();
+    let mut sparse = MinHash::<u64, 128>::sparse();
     let mut dense = MinHash::<u64, 128>::new();
     for i in 0..200_u64 {
         sparse.insert_with_siphashes13(i);
@@ -325,7 +325,7 @@ fn sparse_band_hashes_after_densification() {
 
 #[test]
 fn sparse_band_hashes_while_still_sparse() {
-    let mut mh = MinHash::<u64, 128>::new_sparse();
+    let mut mh = MinHash::<u64, 128>::sparse();
     for i in 0..10_u64 {
         mh.insert_with_siphashes13(i);
     }
@@ -338,7 +338,7 @@ fn sparse_band_hashes_while_still_sparse() {
 
 #[test]
 fn sparse_as_atomic_densifies() {
-    let mut mh = MinHash::<u64, 16>::new_sparse();
+    let mut mh = MinHash::<u64, 16>::sparse();
     for i in 0..10_u64 {
         mh.insert_with_siphashes13(i);
     }
@@ -353,7 +353,7 @@ fn sparse_as_atomic_densifies() {
 
 #[test]
 fn sparse_iter_returns_words() {
-    let mut mh = MinHash::<u64, 64>::new_sparse();
+    let mut mh = MinHash::<u64, 64>::sparse();
     mh.insert_with_siphashes13(42);
     let words: Vec<_> = mh.iter().collect();
     assert_eq!(words.len(), 64);
@@ -361,7 +361,7 @@ fn sparse_iter_returns_words() {
 
 #[test]
 fn sparse_iter_mut_returns_words() {
-    let mut mh = MinHash::<u64, 64>::new_sparse();
+    let mut mh = MinHash::<u64, 64>::sparse();
     mh.insert_with_siphashes13(42);
     for w in mh.iter_mut() {
         *w = 0;
@@ -372,13 +372,13 @@ fn sparse_iter_mut_returns_words() {
 
 #[test]
 fn sparse_number_of_permutations() {
-    let mh = MinHash::<u64, 128>::new_sparse();
+    let mh = MinHash::<u64, 128>::sparse();
     assert_eq!(mh.number_of_permutations(), 128);
 }
 
 #[test]
 fn sparse_memory() {
-    let mh = MinHash::<u64, 128>::new_sparse();
+    let mh = MinHash::<u64, 128>::sparse();
     assert_eq!(mh.memory(), 128 * 8 * 8); // 128 * size_of::<u64>() * 8
 }
 
@@ -386,7 +386,7 @@ fn sparse_memory() {
 
 #[test]
 fn sparse_dense_hash_equality() {
-    let mut sparse = MinHash::<u64, 64>::new_sparse();
+    let mut sparse = MinHash::<u64, 64>::sparse();
     let mut dense = MinHash::<u64, 64>::new();
     for i in 0..100_u64 {
         sparse.insert_with_siphashes13(i);
@@ -413,8 +413,8 @@ fn sparse_dense_hash_equality() {
 
 #[test]
 fn sparse_bitor_by_value() {
-    let mut a = MinHash::<u64, 128>::new_sparse();
-    let mut b = MinHash::<u64, 128>::new_sparse();
+    let mut a = MinHash::<u64, 128>::sparse();
+    let mut b = MinHash::<u64, 128>::sparse();
     for i in 0..50_u64 {
         a.insert_with_siphashes13(i);
     }
@@ -430,8 +430,8 @@ fn sparse_bitor_by_value() {
 #[allow(clippy::op_ref)]
 #[test]
 fn sparse_bitor_by_reference() {
-    let mut a = MinHash::<u64, 128>::new_sparse();
-    let mut b = MinHash::<u64, 128>::new_sparse();
+    let mut a = MinHash::<u64, 128>::sparse();
+    let mut b = MinHash::<u64, 128>::sparse();
     for i in 0..50_u64 {
         a.insert_with_siphashes13(i);
     }
@@ -461,7 +461,7 @@ fn values() -> impl Strategy<Value = Vec<u64>> {
 }
 
 fn prop_sparse_dense_equivalence(values: &[u64]) {
-    let mut sparse = MinHash::<u64, 64>::new_sparse();
+    let mut sparse = MinHash::<u64, 64>::sparse();
     let mut dense = MinHash::<u64, 64>::new();
     for &v in values {
         sparse.insert_with_siphashes13(v);
@@ -475,8 +475,8 @@ fn prop_sparse_exact_jaccard(a: &[u64], b: &[u64]) {
     let set_b: HashSet<u64> = b.iter().copied().collect();
     let intersection = set_a.intersection(&set_b).count();
     let union_count = set_a.union(&set_b).count();
-    let mut sparse_a = MinHash::<u64, 128>::new_sparse();
-    let mut sparse_b = MinHash::<u64, 128>::new_sparse();
+    let mut sparse_a = MinHash::<u64, 128>::sparse();
+    let mut sparse_b = MinHash::<u64, 128>::sparse();
     for &v in a {
         sparse_a.insert_with_siphashes13(v);
     }
@@ -497,8 +497,8 @@ fn prop_sparse_exact_jaccard(a: &[u64], b: &[u64]) {
 
 fn prop_sparse_union_correctness(a: &[u64], b: &[u64]) {
     let union_set: HashSet<u64> = a.iter().chain(b.iter()).copied().collect();
-    let mut sparse_a = MinHash::<u64, 128>::new_sparse();
-    let mut sparse_b = MinHash::<u64, 128>::new_sparse();
+    let mut sparse_a = MinHash::<u64, 128>::sparse();
+    let mut sparse_b = MinHash::<u64, 128>::sparse();
     let mut dense_union = MinHash::<u64, 128>::new();
     for &v in a {
         sparse_a.insert_with_siphashes13(v);
@@ -516,8 +516,8 @@ fn prop_sparse_union_correctness(a: &[u64], b: &[u64]) {
 fn prop_sparse_insertion_order_invariant(values: &[u64]) {
     let set: HashSet<u64> = values.iter().copied().collect();
     let sorted: Vec<u64> = set.into_iter().collect();
-    let mut mh1 = MinHash::<u64, 64>::new_sparse();
-    let mut mh2 = MinHash::<u64, 64>::new_sparse();
+    let mut mh1 = MinHash::<u64, 64>::sparse();
+    let mut mh2 = MinHash::<u64, 64>::sparse();
     for &v in values {
         mh1.insert_with_siphashes13(v);
     }
@@ -528,7 +528,7 @@ fn prop_sparse_insertion_order_invariant(values: &[u64]) {
 }
 
 fn prop_sparse_serde_roundtrip(values: &[u64]) {
-    let mut mh = MinHash::<u64, 64>::new_sparse();
+    let mut mh = MinHash::<u64, 64>::sparse();
     for &v in values {
         mh.insert_with_siphashes13(v);
     }

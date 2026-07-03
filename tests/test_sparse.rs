@@ -63,6 +63,59 @@ fn sparse_sentinel_boundary() {
 }
 
 #[test]
+fn sparse_may_contain_absent_item() {
+    // Catch mutant: sparse_contains_digest always returns true.
+    let mut mh = MinHash::<u64, 128>::sparse();
+    mh.insert_with_siphashes13(42);
+    assert!(mh.may_contain_value_with_siphashes13(42));
+    assert!(
+        !mh.may_contain_value_with_siphashes13(99),
+        "may_contain should return false for absent item"
+    );
+}
+
+#[test]
+fn sparse_union_at_exact_capacity() {
+    // Catch mutant: sparse_union capacity check > becomes >=.
+    // Fill two sketches so that a_len + b_len == capacity (127).
+    let mut a = MinHash::<u64, 128>::sparse();
+    let mut b = MinHash::<u64, 128>::sparse();
+    for i in 0..64_u64 {
+        a.insert_with_siphashes13(i);
+    }
+    for i in 64..127_u64 {
+        b.insert_with_siphashes13(i);
+    }
+    // a has 64 digests, b has 63 digests. Total 127 == capacity.
+    // Union should stay sparse and succeed.
+    let mut result = a;
+    result |= b;
+    for i in 0..127_u64 {
+        assert!(result.may_contain_value_with_siphashes13(i));
+    }
+}
+
+#[test]
+fn sparse_union_merge_ordering() {
+    // Catch mutants in sparse_union merge loop (operator replacements).
+    let mut a = MinHash::<u64, 128>::sparse();
+    let mut b = MinHash::<u64, 128>::sparse();
+    // Interleaved values to exercise merge comparisons.
+    for i in 0..30_u64 {
+        a.insert_with_siphashes13(i * 2);
+        b.insert_with_siphashes13(i * 2 + 1);
+    }
+    let mut result = a;
+    result |= b;
+    for i in 0..60_u64 {
+        assert!(
+            result.may_contain_value_with_siphashes13(i),
+            "missing {i} after union"
+        );
+    }
+}
+
+#[test]
 fn sparse_no_false_negatives_siphash() {
     let mut mh = MinHash::<u64, 128>::sparse();
     for i in 0..1000_u64 {

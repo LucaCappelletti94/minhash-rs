@@ -317,44 +317,37 @@ where
     /// Insert an encoded digest into the sorted list. Densifies on overflow.
     ///
     /// The digest is stored as `digest.wrapping_add(1)` to reserve `0` as
-    /// sentinel. Returns `true` if the digest was newly inserted.
+    /// sentinel.
     fn sparse_insert_digest(&mut self, digest: u64) {
         let zero: Word = 0u64.convert();
         let encoded: Word = digest.wrapping_add(1).convert();
 
-        // Find position in the sorted digest list (words[1..]).
-        let list = &self.words[1..];
-        let len = list.iter().take_while(|&&w| w != zero).count();
+        // Length via reverse scan: O(1) when full, O(n) when empty.
+        let len = self.words[1..]
+            .iter()
+            .rposition(|&w| w != zero)
+            .map_or(0, |i| i + 1);
 
-        // Binary search for the encoded digest.
-        let pos = list[..len].binary_search(&encoded).unwrap_or_else(|p| p);
-
-        if pos < len && list[pos] == encoded {
+        // Binary search in the sorted digest list.
+        let list = &self.words[1..=len];
+        if list.binary_search(&encoded).is_ok() {
             return;
         }
+        let pos = list.binary_search(&encoded).unwrap_err();
 
-        // Check if we have room.
-        // Capacity is PERMUTATIONS - 1: slot 0 is the mode flag,
-        // digests fill words[1..PERMUTATIONS], array boundary terminates.
-        let capacity = PERMUTATIONS.saturating_sub(1);
-        if len >= capacity {
+        // Check capacity: PERMUTATIONS-1 digests fit in words[1..].
+        if len >= PERMUTATIONS.saturating_sub(1) {
             self.densify();
             Self::insert_hash_stream(&mut self.words, digest);
             return;
         }
 
-        // Shift elements right to make room.
-        // List is at words[1..]; insert at words[pos+1].
-        // Shift words[pos+1..pos+len] right to words[pos+2..pos+len+1].
-        for i in (pos + 2..=pos + len + 1).rev() {
-            if i < PERMUTATIONS {
-                self.words[i] = self.words[i - 1];
-            }
-        }
+        // Shift right to make room at words[pos+1].
+        self.words.copy_within((pos + 1)..=len, pos + 2);
         self.words[pos + 1] = encoded;
 
-        // Place zero sentinel after the last digest.
-        let sentinel = pos + len + 1 + 1; // words index after last digest
+        // Zero sentinel after the new last digest (if room).
+        let sentinel = pos + len + 2;
         if sentinel < PERMUTATIONS {
             self.words[sentinel] = zero;
         }
@@ -365,68 +358,67 @@ where
         let zero: Word = 0u64.convert();
         let encoded: Word = digest.wrapping_add(1).convert();
 
-        let list = &self.words[1..];
-        let len = list.iter().take_while(|&&w| w != zero).count();
+        let len = self.words[1..]
+            .iter()
+            .rposition(|&w| w != zero)
+            .map_or(0, |i| i + 1);
 
-        list[..len].binary_search(&encoded).is_ok()
+        self.words[1..=len].binary_search(&encoded).is_ok()
     }
 
     #[allow(dead_code)]
     /// Count the number of stored digests.
     fn sparse_len(&self) -> usize {
         let zero: Word = 0u64.convert();
-        self.words[1..].iter().take_while(|&&w| w != zero).count()
-    }
-
-    /// Iterate over decoded digests.
-    fn iter_digests(&self) -> impl Iterator<Item = u64> + '_ {
-        let zero: Word = 0u64.convert();
         self.words[1..]
             .iter()
-            .take_while(move |&&w| w != zero)
-            .map(move |&w| w.to_u64().wrapping_sub(1))
+            .rposition(|&w| w != zero)
+            .map_or(0, |i| i + 1)
     }
 
     /// Exact Jaccard between two sparse sketches via sorted-list merge walk.
+    ///
+    /// Compares encoded values directly (wrapping_add(1) preserves order),
+    /// avoiding decode overhead. Uses raw index loops instead of iterators.
     fn sparse_jaccard(&self, other: &Self) -> f64 {
-        let mut a = self.iter_digests();
-        let mut b = other.iter_digests();
+        let zero: Word = 0u64.convert();
 
-        let mut a_next = a.next();
-        let mut b_next = b.next();
+        let a_len = self.words[1..]
+            .iter()
+            .rposition(|&w| w != zero)
+            .map_or(0, |i| i + 1);
+        let b_len = other.words[1..]
+            .iter()
+            .rposition(|&w| w != zero)
+            .map_or(0, |i| i + 1);
 
+        let mut ai = 1usize;
+        let mut bi = 1usize;
         let mut intersection = 0usize;
         let mut union_count = 0usize;
 
-        loop {
-            match (a_next, b_next) {
-                (Some(av), Some(bv)) => match av.cmp(&bv) {
-                    core::cmp::Ordering::Equal => {
-                        intersection += 1;
-                        union_count += 1;
-                        a_next = a.next();
-                        b_next = b.next();
-                    }
-                    core::cmp::Ordering::Less => {
-                        union_count += 1;
-                        a_next = a.next();
-                    }
-                    core::cmp::Ordering::Greater => {
-                        union_count += 1;
-                        b_next = b.next();
-                    }
-                },
-                (Some(_), None) => {
+        let a_end = 1 + a_len;
+        let b_end = 1 + b_len;
+
+        while ai < a_end && bi < b_end {
+            match self.words[ai].cmp(&other.words[bi]) {
+                core::cmp::Ordering::Equal => {
+                    intersection += 1;
                     union_count += 1;
-                    a_next = a.next();
+                    ai += 1;
+                    bi += 1;
                 }
-                (None, Some(_)) => {
+                core::cmp::Ordering::Less => {
                     union_count += 1;
-                    b_next = b.next();
+                    ai += 1;
                 }
-                (None, None) => break,
+                core::cmp::Ordering::Greater => {
+                    union_count += 1;
+                    bi += 1;
+                }
             }
         }
+        union_count += (a_end - ai) + (b_end - bi);
 
         if union_count == 0 {
             return 1.0;
@@ -437,13 +429,12 @@ where
     #[allow(dead_code)]
     /// Merge another sparse sketch into this one.
     ///
-    /// Collects both sides' encoded digests into stack buffers, performs a
-    /// two-pointer merge, and writes the result back. On overflow, densifies
-    /// both operands and falls back to dense union.
+    /// Merges both sorted digest lists into a single MaybeUninit buffer
+    /// (avoiding zero-init overhead), then copies the result back.
+    /// On overflow, densifies both operands and falls back to dense union.
     fn sparse_union(&mut self, other: &Self) {
         let zero: Word = 0u64.convert();
 
-        // Quick lengths via reverse scan (O(1) when full).
         let a_len = self.words[1..]
             .iter()
             .rposition(|&w| w != zero)
@@ -455,7 +446,6 @@ where
 
         let capacity = PERMUTATIONS.saturating_sub(1);
 
-        // If the union definitely won't fit, skip the merge and densify.
         if a_len + b_len > capacity {
             self.densify();
             let mut other_dense = *other;
@@ -464,51 +454,55 @@ where
             return;
         }
 
-        // Collect both sides' encoded digests into stack buffers.
-        // Encoded values preserve sort order (wrapping_add(1) is monotonic).
-        let mut a_buf: [Word; PERMUTATIONS] = [zero; PERMUTATIONS];
-        let mut b_buf: [Word; PERMUTATIONS] = [zero; PERMUTATIONS];
-        a_buf[..a_len].copy_from_slice(&self.words[1..=a_len]);
-        b_buf[..b_len].copy_from_slice(&other.words[1..=b_len]);
+        // Single merge buffer without zero-init.
+        // We only write the first (a_len + b_len) slots.
+        #[allow(clippy::uninit_assumed_init)]
+        let mut buf: [Word; PERMUTATIONS] = unsafe {
+            core::mem::MaybeUninit::<[Word; PERMUTATIONS]>::uninit().assume_init()
+        };
 
-        // Two-pointer merge: a_buf[0..a_len] + b_buf[0..b_len] → self.words[1..]
+        let a = &self.words[1..=a_len];
+        let b = &other.words[1..=b_len];
+
         let (mut ai, mut bi) = (0usize, 0usize);
-        let mut wi = 1usize;
+        let mut wi = 0usize;
 
         while ai < a_len && bi < b_len {
-            match a_buf[ai].cmp(&b_buf[bi]) {
+            match a[ai].cmp(&b[bi]) {
                 core::cmp::Ordering::Less => {
-                    self.words[wi] = a_buf[ai];
+                    buf[wi] = a[ai];
                     ai += 1;
                     wi += 1;
                 }
                 core::cmp::Ordering::Equal => {
-                    self.words[wi] = a_buf[ai];
+                    buf[wi] = a[ai];
                     ai += 1;
                     bi += 1;
                     wi += 1;
                 }
                 core::cmp::Ordering::Greater => {
-                    self.words[wi] = b_buf[bi];
+                    buf[wi] = b[bi];
                     bi += 1;
                     wi += 1;
                 }
             }
         }
         while ai < a_len {
-            self.words[wi] = a_buf[ai];
+            buf[wi] = a[ai];
             ai += 1;
             wi += 1;
         }
         while bi < b_len {
-            self.words[wi] = b_buf[bi];
+            buf[wi] = b[bi];
             bi += 1;
             wi += 1;
         }
 
-        // Place sentinel after last digest.
-        if wi < PERMUTATIONS {
-            self.words[wi] = zero;
+        // Copy merged result back to words[1..].
+        self.words[1..=wi].copy_from_slice(&buf[..wi]);
+
+        if wi + 1 < PERMUTATIONS {
+            self.words[wi + 1] = zero;
         }
     }
 

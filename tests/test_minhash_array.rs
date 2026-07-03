@@ -23,15 +23,15 @@ fn insert_is_isolated_per_index() {
     let mut array = MinHashArray::<u64, PERMUTATIONS, N>::new();
 
     // Insert into a single counter only.
-    array[1].insert_with_siphashes13(42_u64);
+    array[1].insert(42_u64);
 
     assert!(array[0].is_empty());
     assert!(!array[1].is_empty());
     assert!(array[2].is_empty());
     assert!(array[3].is_empty());
 
-    assert!(array[1].may_contain_value_with_siphashes13(42_u64));
-    assert!(!array[0].may_contain_value_with_siphashes13(42_u64));
+    assert!(array[1].may_contain(42_u64));
+    assert!(!array[0].may_contain(42_u64));
 }
 
 #[test]
@@ -40,7 +40,7 @@ fn each_index_holds_an_independent_sketch() {
 
     for i in 0..N {
         for v in 0..100_u64 {
-            array[i].insert_with_siphashes13(v + (i as u64) * 1000);
+            array[i].insert(v + (i as u64) * 1000);
         }
     }
 
@@ -58,9 +58,9 @@ fn each_index_holds_an_independent_sketch() {
 fn index_mut_allows_overwrite() {
     let mut array = MinHashArray::<u64, PERMUTATIONS, N>::new();
     let mut replacement = MinHash::<u64, PERMUTATIONS>::new();
-    replacement.insert_with_siphashes13(7_u64);
+    replacement.insert(7_u64);
 
     array[2] = replacement;
     assert_eq!(array[2], replacement);
-    assert!(array[2].may_contain_value_with_siphashes13(7_u64));
+    assert!(array[2].may_contain(7_u64));
 }

@@ -1,5 +1,6 @@
 //! LSH banding for MinHash signatures.
 
+use crate::hasher::Hasher as MinHashHasher;
 use crate::prelude::{Maximal, MinHash, Primitive, XorShift};
 use crate::primitive::ToU64;
 use core::hash::{Hash, Hasher};
@@ -69,8 +70,11 @@ impl<const BANDS: usize> Iterator for BandMatches<'_, BANDS> {
     }
 }
 
-impl<Word: Hash + Ord + XorShift + Copy + ToU64 + Maximal, const PERMUTATIONS: usize>
-    MinHash<Word, PERMUTATIONS>
+impl<
+        Word: Hash + Ord + XorShift + Copy + ToU64 + Maximal,
+        const PERMUTATIONS: usize,
+        H: MinHashHasher,
+    > MinHash<Word, PERMUTATIONS, H>
 where
     u64: Primitive<Word>,
 {

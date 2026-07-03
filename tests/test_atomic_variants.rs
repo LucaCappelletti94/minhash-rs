@@ -7,7 +7,7 @@ use minhash_rs::prelude::*;
 
 #[test]
 fn atomic_fnv_has_no_false_negatives() {
-    let mut mh = MinHash::<u64, 16>::new();
+    let mut mh = MinHash::<u64, 16, Fnv>::new();
     {
         let atomic = mh.as_atomic();
         for v in 0..8u64 {
@@ -15,35 +15,36 @@ fn atomic_fnv_has_no_false_negatives() {
         }
     }
     for v in 0..8u64 {
-        assert!(mh.may_contain_value_with_fnv(v));
+        assert!(mh.may_contain(v));
     }
 }
 
 #[test]
 fn atomic_keyed_fnv_has_no_false_negatives() {
-    let key = 0xDEAD_BEEF;
-    let mut mh = MinHash::<u64, 16>::new();
+    let key0 = 0xDEAD_BEEF;
+    let key1 = 0;
+    let mut mh = MinHash::<u64, 16, FnvKeyed>::new_with_keys(key0, key1);
     {
         let atomic = mh.as_atomic();
         for v in 0..8u64 {
-            atomic.fetch_insert_with_keyed_fnv(v, key, Ordering::Relaxed);
+            atomic.fetch_insert_with_keyed_fnv(v, key0, Ordering::Relaxed);
         }
     }
     for v in 0..8u64 {
-        assert!(mh.may_contain_value_with_keyed_fnv(v, key));
+        assert!(mh.may_contain(v));
     }
 }
 
 #[test]
 fn atomic_fnv_matches_non_atomic_fnv() {
-    let mut atomic_mh = MinHash::<u64, 16>::new();
+    let mut atomic_mh = MinHash::<u64, 16, Fnv>::new();
     {
         let atomic = atomic_mh.as_atomic();
         atomic.fetch_insert_with_fnv(123_u64, Ordering::Relaxed);
     }
 
-    let mut serial_mh = MinHash::<u64, 16>::new();
-    serial_mh.insert_with_fnv(123_u64);
+    let mut serial_mh = MinHash::<u64, 16, Fnv>::new();
+    serial_mh.insert(123_u64);
 
     assert_eq!(atomic_mh, serial_mh);
 }
@@ -54,7 +55,7 @@ macro_rules! atomic_word_width_test {
     ($name:ident, $word:ty) => {
         #[test]
         fn $name() {
-            let mut mh = MinHash::<$word, 16>::new();
+            let mut mh = MinHash::<$word, 16, SipHashes13>::new();
             assert!(mh.is_empty());
             {
                 let atomic = mh.as_atomic();
@@ -64,7 +65,7 @@ macro_rules! atomic_word_width_test {
             }
             assert!(!mh.is_empty());
             for v in 0..8u64 {
-                assert!(mh.may_contain_value_with_siphashes13(v));
+                assert!(mh.may_contain(v));
             }
         }
     };

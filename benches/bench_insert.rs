@@ -15,45 +15,66 @@ fn bench_insert_families(c: &mut Criterion) {
     let mut group = c.benchmark_group("insert/families");
     group.sample_size(100);
 
-    for (name, f) in [
-        (
-            "siphashes13",
-            Box::new(|mh: &mut MinHash<u64, 128>, i: u64| {
-                mh.insert_with_siphashes13(i);
-            }) as Box<dyn Fn(&mut MinHash<u64, 128>, u64)>,
-        ),
-        (
-            "keyed_siphashes13",
-            Box::new(|mh: &mut MinHash<u64, 128>, i: u64| {
-                mh.insert_with_keyed_siphashes13(i, 0x0123_4567_89AB_CDEF, 0xFEDC_BA98_7654_3210);
-            }) as Box<dyn Fn(&mut MinHash<u64, 128>, u64)>,
-        ),
-        (
-            "fnv",
-            Box::new(|mh: &mut MinHash<u64, 128>, i: u64| {
-                mh.insert_with_fnv(i);
-            }) as Box<dyn Fn(&mut MinHash<u64, 128>, u64)>,
-        ),
-        (
-            "keyed_fnv",
-            Box::new(|mh: &mut MinHash<u64, 128>, i: u64| {
-                mh.insert_with_keyed_fnv(i, 0x0123_4567_89AB_CDEF);
-            }) as Box<dyn Fn(&mut MinHash<u64, 128>, u64)>,
-        ),
-    ] {
-        group.bench_function(BenchmarkId::new("cold", name), |b| {
-            b.iter_batched(
-                MinHash::<u64, 128>::new,
-                |mut mh| {
-                    for i in 0..ELEMENTS as u64 {
-                        f(&mut mh, i);
-                    }
-                    mh
-                },
-                BatchSize::PerIteration,
-            );
-        });
-    }
+    // siphashes13 (default hasher)
+    group.bench_function("cold/siphashes13", |b| {
+        b.iter_batched(
+            MinHash::<u64, 128>::new,
+            |mut mh| {
+                for i in 0..ELEMENTS as u64 {
+                    mh.insert(i);
+                }
+                mh
+            },
+            BatchSize::PerIteration,
+        );
+    });
+
+    // keyed_siphashes13
+    group.bench_function("cold/keyed_siphashes13", |b| {
+        b.iter_batched(
+            || {
+                MinHash::<u64, 128, SipHashes13Keyed>::new_with_keys(
+                    0x0123_4567_89AB_CDEF,
+                    0xFEDC_BA98_7654_3210,
+                )
+            },
+            |mut mh| {
+                for i in 0..ELEMENTS as u64 {
+                    mh.insert(i);
+                }
+                mh
+            },
+            BatchSize::PerIteration,
+        );
+    });
+
+    // fnv
+    group.bench_function("cold/fnv", |b| {
+        b.iter_batched(
+            MinHash::<u64, 128, Fnv>::new,
+            |mut mh| {
+                for i in 0..ELEMENTS as u64 {
+                    mh.insert(i);
+                }
+                mh
+            },
+            BatchSize::PerIteration,
+        );
+    });
+
+    // keyed_fnv
+    group.bench_function("cold/keyed_fnv", |b| {
+        b.iter_batched(
+            || MinHash::<u64, 128, FnvKeyed>::new_with_keys(0x0123_4567_89AB_CDEF, 0),
+            |mut mh| {
+                for i in 0..ELEMENTS as u64 {
+                    mh.insert(i);
+                }
+                mh
+            },
+            BatchSize::PerIteration,
+        );
+    });
 
     group.finish();
 }
@@ -63,38 +84,43 @@ fn bench_insert_mature(c: &mut Criterion) {
     group.sample_size(100);
 
     // Pre-populate a sketch so most inserts will not improve any register.
-    let mut warm = MinHash::<u64, 128>::new();
+    let mut warm: MinHash<u64, 128> = MinHash::new();
     for i in 0..1_000_000u64 {
-        warm.insert_with_siphashes13(i);
+        warm.insert(i);
     }
 
-    for (name, f) in [
-        (
-            "siphashes13",
-            Box::new(|mh: &mut MinHash<u64, 128>, i: u64| {
-                mh.insert_with_siphashes13(i);
-            }) as Box<dyn Fn(&mut MinHash<u64, 128>, u64)>,
-        ),
-        (
-            "fnv",
-            Box::new(|mh: &mut MinHash<u64, 128>, i: u64| {
-                mh.insert_with_fnv(i);
-            }) as Box<dyn Fn(&mut MinHash<u64, 128>, u64)>,
-        ),
-    ] {
-        group.bench_function(name, |b| {
-            b.iter_batched(
-                || warm,
-                |mut mh| {
-                    for i in 0..ELEMENTS as u64 {
-                        f(&mut mh, i);
-                    }
-                    mh
-                },
-                BatchSize::PerIteration,
-            );
-        });
+    // siphashes13 (default hasher)
+    group.bench_function("siphashes13", |b| {
+        b.iter_batched(
+            || warm,
+            |mut mh| {
+                for i in 0..ELEMENTS as u64 {
+                    mh.insert(i);
+                }
+                mh
+            },
+            BatchSize::PerIteration,
+        );
+    });
+
+    // fnv
+    let mut warm_fnv: MinHash<u64, 128, Fnv> = MinHash::new();
+    for i in 0..1_000_000u64 {
+        warm_fnv.insert(i);
     }
+
+    group.bench_function("fnv", |b| {
+        b.iter_batched(
+            || warm_fnv,
+            |mut mh| {
+                for i in 0..ELEMENTS as u64 {
+                    mh.insert(i);
+                }
+                mh
+            },
+            BatchSize::PerIteration,
+        );
+    });
 
     group.finish();
 }
@@ -106,10 +132,10 @@ fn bench_insert_permutations(c: &mut Criterion) {
     // u64 with varying permutation counts
     group.bench_function(BenchmarkId::new("u64", 16), |b| {
         b.iter_batched(
-            MinHash::<u64, 16>::new,
+            MinHash::<u64, 16, Fnv>::new,
             |mut mh| {
                 for i in 0..ELEMENTS as u64 {
-                    mh.insert_with_fnv(i);
+                    mh.insert(i);
                 }
                 mh
             },
@@ -119,10 +145,10 @@ fn bench_insert_permutations(c: &mut Criterion) {
 
     group.bench_function(BenchmarkId::new("u64", 128), |b| {
         b.iter_batched(
-            MinHash::<u64, 128>::new,
+            MinHash::<u64, 128, Fnv>::new,
             |mut mh| {
                 for i in 0..ELEMENTS as u64 {
-                    mh.insert_with_fnv(i);
+                    mh.insert(i);
                 }
                 mh
             },
@@ -132,10 +158,10 @@ fn bench_insert_permutations(c: &mut Criterion) {
 
     group.bench_function(BenchmarkId::new("u64", 1024), |b| {
         b.iter_batched(
-            MinHash::<u64, 1024>::new,
+            MinHash::<u64, 1024, Fnv>::new,
             |mut mh| {
                 for i in 0..ELEMENTS as u64 {
-                    mh.insert_with_fnv(i);
+                    mh.insert(i);
                 }
                 mh
             },
@@ -145,10 +171,10 @@ fn bench_insert_permutations(c: &mut Criterion) {
 
     group.bench_function(BenchmarkId::new("u64", 8192), |b| {
         b.iter_batched(
-            MinHash::<u64, 8192>::new,
+            MinHash::<u64, 8192, Fnv>::new,
             |mut mh| {
                 for i in 0..ELEMENTS as u64 {
-                    mh.insert_with_fnv(i);
+                    mh.insert(i);
                 }
                 mh
             },
@@ -165,10 +191,10 @@ fn bench_insert_word_widths(c: &mut Criterion) {
 
     group.bench_function("u8", |b| {
         b.iter_batched(
-            MinHash::<u8, 128>::new,
+            MinHash::<u8, 128, Fnv>::new,
             |mut mh| {
                 for i in 0..ELEMENTS as u64 {
-                    mh.insert_with_fnv(i);
+                    mh.insert(i);
                 }
                 mh
             },
@@ -178,10 +204,10 @@ fn bench_insert_word_widths(c: &mut Criterion) {
 
     group.bench_function("u16", |b| {
         b.iter_batched(
-            MinHash::<u16, 128>::new,
+            MinHash::<u16, 128, Fnv>::new,
             |mut mh| {
                 for i in 0..ELEMENTS as u64 {
-                    mh.insert_with_fnv(i);
+                    mh.insert(i);
                 }
                 mh
             },
@@ -191,10 +217,10 @@ fn bench_insert_word_widths(c: &mut Criterion) {
 
     group.bench_function("u32", |b| {
         b.iter_batched(
-            MinHash::<u32, 128>::new,
+            MinHash::<u32, 128, Fnv>::new,
             |mut mh| {
                 for i in 0..ELEMENTS as u64 {
-                    mh.insert_with_fnv(i);
+                    mh.insert(i);
                 }
                 mh
             },
@@ -204,10 +230,10 @@ fn bench_insert_word_widths(c: &mut Criterion) {
 
     group.bench_function("u64", |b| {
         b.iter_batched(
-            MinHash::<u64, 128>::new,
+            MinHash::<u64, 128, Fnv>::new,
             |mut mh| {
                 for i in 0..ELEMENTS as u64 {
-                    mh.insert_with_fnv(i);
+                    mh.insert(i);
                 }
                 mh
             },
@@ -224,7 +250,7 @@ fn bench_insert_atomic(c: &mut Criterion) {
 
     group.bench_function("fetch_min_fnv", |b| {
         b.iter_batched(
-            MinHash::<u64, 128>::new,
+            MinHash::<u64, 128, Fnv>::new,
             |mut mh| {
                 let atomic = mh.as_atomic();
                 for i in 0..ELEMENTS as u64 {

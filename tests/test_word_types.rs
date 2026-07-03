@@ -16,30 +16,47 @@ where
     Word: XorShift + Copy + Ord + Maximal + ToU64,
     u64: Primitive<Word>,
 {
-    let mut mh = MinHash::<Word, PERMUTATIONS>::new();
-    assert!(mh.is_empty());
+    // SipHash sketch
+    {
+        let mut mh = MinHash::<Word, PERMUTATIONS, SipHashes13>::new();
+        assert!(mh.is_empty());
 
-    for &v in values {
-        mh.insert_with_siphashes13(v);
-        mh.insert_with_fnv(v);
+        for &v in values {
+            mh.insert(v);
+        }
+        assert!(!mh.is_empty());
+
+        for &v in values {
+            assert!(
+                mh.may_contain(v),
+                "siphash false negative for {v} with {} bits",
+                mh.memory() / PERMUTATIONS,
+            );
+        }
+
+        assert_eq!(mh.estimate_jaccard_index(&mh), 1.0);
     }
-    assert!(!mh.is_empty());
 
-    for &v in values {
-        assert!(
-            mh.may_contain_value_with_siphashes13(v),
-            "siphash false negative for {v} with {} bits",
-            mh.memory() / PERMUTATIONS,
-        );
-        assert!(
-            mh.may_contain_value_with_fnv(v),
-            "fnv false negative for {v} with {} bits",
-            mh.memory() / PERMUTATIONS,
-        );
+    // FNV sketch
+    {
+        let mut mh = MinHash::<Word, PERMUTATIONS, Fnv>::new();
+        assert!(mh.is_empty());
+
+        for &v in values {
+            mh.insert(v);
+        }
+        assert!(!mh.is_empty());
+
+        for &v in values {
+            assert!(
+                mh.may_contain(v),
+                "fnv false negative for {v} with {} bits",
+                mh.memory() / PERMUTATIONS,
+            );
+        }
+
+        assert_eq!(mh.estimate_jaccard_index(&mh), 1.0);
     }
-
-    // A sketch is always perfectly similar to itself.
-    assert_eq!(mh.estimate_jaccard_index(&mh), 1.0);
 }
 
 #[test]
@@ -68,7 +85,7 @@ fn small_words_saturate_and_report_full() {
     let mut mh = MinHash::<u8, 16>::new();
     assert!(!mh.is_full());
     for i in 0..100_000_u64 {
-        mh.insert_with_siphashes13(i);
+        mh.insert(i);
     }
     assert!(mh.is_full());
 }
@@ -80,7 +97,7 @@ fn single_value_never_saturates_small_words() {
     // full from a single insertion. No single value may saturate the sketch.
     for v in 0..5_000_u64 {
         let mut mh = MinHash::<u8, 32>::new();
-        mh.insert_with_siphashes13(v);
+        mh.insert(v);
         assert!(!mh.is_full(), "value {v} saturated the sketch on its own");
     }
 }

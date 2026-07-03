@@ -38,7 +38,7 @@ where
 {
     let mut mh = MinHash::<W, PERMUTATIONS>::new();
     for &v in values {
-        mh.insert_with_siphashes13(v);
+        mh.insert(v);
     }
     mh
 }
@@ -50,10 +50,7 @@ where
 {
     let mh = build::<W>(values);
     for &v in values {
-        assert!(
-            mh.may_contain_value_with_siphashes13(v),
-            "false negative for {v}"
-        );
+        assert!(mh.may_contain(v), "false negative for {v}");
     }
 }
 
@@ -115,10 +112,7 @@ where
 
     let union = sa | sb;
     for &v in a.iter().chain(b.iter()) {
-        assert!(
-            union.may_contain_value_with_siphashes13(v),
-            "union dropped {v}"
-        );
+        assert!(union.may_contain(v), "union dropped {v}");
     }
 }
 

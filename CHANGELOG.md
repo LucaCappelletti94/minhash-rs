@@ -3,17 +3,24 @@
 All notable changes to this project are documented in this file. The format is
 loosely based on Keep a Changelog, and the project follows semantic versioning.
 
+## 0.5.0
+
+### Breaking
+
+- `MinHash<Word, PERMUTATIONS>` is now `MinHash<Word, PERMUTATIONS, H>` where `H` is a phantom [`Hasher`](crate::hasher::Hasher) type parameter defaulting to `SipHashes13`. Sketches built with different hashers are different Rust types, preventing silent correctness bugs from cross-hasher comparison.
+- `insert_with_siphashes13()`, `insert_with_fnv()`, `insert_with_keyed_siphashes13()`, `insert_with_keyed_fnv()` are replaced by a single `insert()` method that dispatches through the hasher type.
+- `may_contain_value_with_siphashes13()`, `may_contain_value_with_fnv()`, `may_contain_value_with_keyed_siphashes13()`, `may_contain_value_with_keyed_fnv()` are replaced by a single `may_contain()` method.
+- Keyed hashers are constructed via `MinHash::<u64, 128, SipHashes13Keyed>::new_with_keys(k0, k1)` or `MinHash::<u64, 128, FnvKeyed>::new_with_keys(key, 0)` instead of passing keys to insert methods.
+- `MinHashArray<Word, PERMUTATIONS, N>` is now `MinHashArray<Word, PERMUTATIONS, N, H>`.
+
+### Added
+
+- `hasher` module with `Hasher` trait and marker types: `SipHashes13`, `SipHashes13Keyed`, `Fnv`, `FnvKeyed`.
+- `MinHash::new_with_keys()` and `MinHash::sparse_with_keys()` for keyed hasher construction.
+- `MinHash::with_keys()` for setting keys after deserialization.
+- `lsh` module providing locality-sensitive hashing banding for signatures. `MinHash::band_hashes::<BANDS>()` splits a signature into `BANDS` equal-sized bands.
+
 ## 0.4.0
-
-### Added
-
-- Sparse mode via `MinHash::sparse()`. Instead of precomputing all permutation hashes, the sketch stores SipHash/FNV digests in a sorted list and defers XorShift expansion until auto-densification. Within capacity, sparse-vs-sparse Jaccard is exact (limited only by hash collisions, not MinHash approximation). Sparse insert is 6x faster for small sets (100 elements) and `may_contain` is 10x faster. Sparse mode is gated to 64-bit word types (`u64`, `usize` on 64-bit platforms).
-
-## Unreleased
-
-### Added
-
-- `lsh` module providing locality-sensitive hashing banding for signatures. `MinHash::band_hashes::<BANDS>()` splits a signature into `BANDS` equal-sized bands and returns the FNV-1a `band_hash` of each, the standard primitive for turning MinHash sketches into near-duplicate candidate pairs.
 
 
 ## 0.3.0

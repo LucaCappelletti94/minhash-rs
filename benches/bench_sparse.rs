@@ -15,39 +15,59 @@ fn bench_insert_sparse_vs_dense(c: &mut Criterion) {
     group.sample_size(100);
 
     for &cardinality in &[SMALL_SET, MEDIUM_SET, LARGE_SET] {
-        for &hasher in &["siphashes13", "fnv"] {
-            group.bench_function(
-                BenchmarkId::new(format!("sparse_{hasher}"), cardinality),
-                |b| {
-                    b.iter_batched(
-                        MinHash::<u64, 128>::sparse,
-                        |mut mh| {
-                            for i in 0..cardinality as u64 {
-                                mh.insert_with_siphashes13(i);
-                            }
-                            mh
-                        },
-                        BatchSize::PerIteration,
-                    );
+        // siphashes13 (default hasher)
+        group.bench_function(BenchmarkId::new("sparse_siphashes13", cardinality), |b| {
+            b.iter_batched(
+                MinHash::<u64, 128>::sparse,
+                |mut mh| {
+                    for i in 0..cardinality as u64 {
+                        mh.insert(i);
+                    }
+                    mh
                 },
+                BatchSize::PerIteration,
             );
+        });
 
-            group.bench_function(
-                BenchmarkId::new(format!("dense_{hasher}"), cardinality),
-                |b| {
-                    b.iter_batched(
-                        MinHash::<u64, 128>::new,
-                        |mut mh| {
-                            for i in 0..cardinality as u64 {
-                                mh.insert_with_siphashes13(i);
-                            }
-                            mh
-                        },
-                        BatchSize::PerIteration,
-                    );
+        group.bench_function(BenchmarkId::new("dense_siphashes13", cardinality), |b| {
+            b.iter_batched(
+                MinHash::<u64, 128>::new,
+                |mut mh| {
+                    for i in 0..cardinality as u64 {
+                        mh.insert(i);
+                    }
+                    mh
                 },
+                BatchSize::PerIteration,
             );
-        }
+        });
+
+        // fnv
+        group.bench_function(BenchmarkId::new("sparse_fnv", cardinality), |b| {
+            b.iter_batched(
+                MinHash::<u64, 128, Fnv>::sparse,
+                |mut mh| {
+                    for i in 0..cardinality as u64 {
+                        mh.insert(i);
+                    }
+                    mh
+                },
+                BatchSize::PerIteration,
+            );
+        });
+
+        group.bench_function(BenchmarkId::new("dense_fnv", cardinality), |b| {
+            b.iter_batched(
+                MinHash::<u64, 128, Fnv>::new,
+                |mut mh| {
+                    for i in 0..cardinality as u64 {
+                        mh.insert(i);
+                    }
+                    mh
+                },
+                BatchSize::PerIteration,
+            );
+        });
     }
 
     group.finish();
@@ -62,12 +82,12 @@ fn bench_may_contain_sparse_vs_dense(c: &mut Criterion) {
     for &cardinality in &[SMALL_SET, MEDIUM_SET] {
         let sparse: MinHash<u64, 128> =
             (0..cardinality as u64).fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
-                mh.insert_with_siphashes13(i);
+                mh.insert(i);
                 mh
             });
         let dense: MinHash<u64, 128> =
             (0..cardinality as u64).fold(MinHash::<u64, 128>::new(), |mut mh, i| {
-                mh.insert_with_siphashes13(i);
+                mh.insert(i);
                 mh
             });
 
@@ -75,7 +95,7 @@ fn bench_may_contain_sparse_vs_dense(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new("sparse_present", cardinality), |b| {
             b.iter(|| {
                 for i in 0..cardinality as u64 {
-                    let _ = sparse.may_contain_value_with_siphashes13(i);
+                    let _ = sparse.may_contain(i);
                 }
             });
         });
@@ -83,7 +103,7 @@ fn bench_may_contain_sparse_vs_dense(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new("dense_present", cardinality), |b| {
             b.iter(|| {
                 for i in 0..cardinality as u64 {
-                    let _ = dense.may_contain_value_with_siphashes13(i);
+                    let _ = dense.may_contain(i);
                 }
             });
         });
@@ -92,7 +112,7 @@ fn bench_may_contain_sparse_vs_dense(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new("sparse_absent", cardinality), |b| {
             b.iter(|| {
                 for i in cardinality as u64..(2 * cardinality) as u64 {
-                    let _ = sparse.may_contain_value_with_siphashes13(i);
+                    let _ = sparse.may_contain(i);
                 }
             });
         });
@@ -100,7 +120,7 @@ fn bench_may_contain_sparse_vs_dense(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new("dense_absent", cardinality), |b| {
             b.iter(|| {
                 for i in cardinality as u64..(2 * cardinality) as u64 {
-                    let _ = dense.may_contain_value_with_siphashes13(i);
+                    let _ = dense.may_contain(i);
                 }
             });
         });
@@ -118,23 +138,23 @@ fn bench_jaccard_sparse_vs_dense(c: &mut Criterion) {
     for &cardinality in &[SMALL_SET, MEDIUM_SET] {
         let sparse_a: MinHash<u64, 128> =
             (0..cardinality as u64).fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
-                mh.insert_with_siphashes13(i);
+                mh.insert(i);
                 mh
             });
         let sparse_b: MinHash<u64, 128> = ((cardinality / 2) as u64..(cardinality * 3 / 2) as u64)
             .fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
-                mh.insert_with_siphashes13(i);
+                mh.insert(i);
                 mh
             });
 
         let dense_a: MinHash<u64, 128> =
             (0..cardinality as u64).fold(MinHash::<u64, 128>::new(), |mut mh, i| {
-                mh.insert_with_siphashes13(i);
+                mh.insert(i);
                 mh
             });
         let dense_b: MinHash<u64, 128> = ((cardinality / 2) as u64..(cardinality * 3 / 2) as u64)
             .fold(MinHash::<u64, 128>::new(), |mut mh, i| {
-                mh.insert_with_siphashes13(i);
+                mh.insert(i);
                 mh
             });
 
@@ -163,23 +183,23 @@ fn bench_union_sparse_vs_dense(c: &mut Criterion) {
     for &cardinality in &[SMALL_SET, MEDIUM_SET] {
         let sparse_a: MinHash<u64, 128> =
             (0..cardinality as u64).fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
-                mh.insert_with_siphashes13(i);
+                mh.insert(i);
                 mh
             });
         let sparse_b: MinHash<u64, 128> = ((cardinality / 2) as u64..(cardinality * 3 / 2) as u64)
             .fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
-                mh.insert_with_siphashes13(i);
+                mh.insert(i);
                 mh
             });
 
         let dense_a: MinHash<u64, 128> =
             (0..cardinality as u64).fold(MinHash::<u64, 128>::new(), |mut mh, i| {
-                mh.insert_with_siphashes13(i);
+                mh.insert(i);
                 mh
             });
         let dense_b: MinHash<u64, 128> = ((cardinality / 2) as u64..(cardinality * 3 / 2) as u64)
             .fold(MinHash::<u64, 128>::new(), |mut mh, i| {
-                mh.insert_with_siphashes13(i);
+                mh.insert(i);
                 mh
             });
 
@@ -235,13 +255,13 @@ fn bench_densification(c: &mut Criterion) {
             || {
                 let mut mh = MinHash::<u64, 128>::sparse();
                 for i in 0..near_capacity {
-                    mh.insert_with_siphashes13(i);
+                    mh.insert(i);
                 }
                 mh
             },
             |mut mh| {
                 // This insert triggers densification
-                mh.insert_with_siphashes13(999_999);
+                mh.insert(999_999);
                 mh
             },
             BatchSize::PerIteration,
@@ -251,7 +271,7 @@ fn bench_densification(c: &mut Criterion) {
     // Measure densification via equality check (sparse vs dense)
     let sparse: MinHash<u64, 128> =
         (0..MEDIUM_SET as u64).fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
-            mh.insert_with_siphashes13(i);
+            mh.insert(i);
             mh
         });
     let dense: MinHash<u64, 128> = MinHash::<u64, 128>::new();
@@ -271,12 +291,12 @@ fn bench_band_hashes(c: &mut Criterion) {
 
     let sparse: MinHash<u64, 128> =
         (0..MEDIUM_SET as u64).fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
-            mh.insert_with_siphashes13(i);
+            mh.insert(i);
             mh
         });
     let dense: MinHash<u64, 128> =
         (0..MEDIUM_SET as u64).fold(MinHash::<u64, 128>::new(), |mut mh, i| {
-            mh.insert_with_siphashes13(i);
+            mh.insert(i);
             mh
         });
 
@@ -297,12 +317,12 @@ fn bench_state_checks(c: &mut Criterion) {
 
     let sparse_full: MinHash<u64, 128> =
         (0..200_u64).fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
-            mh.insert_with_siphashes13(i);
+            mh.insert(i);
             mh
         });
     let dense_populated: MinHash<u64, 128> =
         (0..200_u64).fold(MinHash::<u64, 128>::new(), |mut mh, i| {
-            mh.insert_with_siphashes13(i);
+            mh.insert(i);
             mh
         });
 
@@ -334,7 +354,7 @@ fn bench_from_iter(c: &mut Criterion) {
                 || 0..cardinality as u64,
                 |range| {
                     range.fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
-                        mh.insert_with_siphashes13(i);
+                        mh.insert(i);
                         mh
                     })
                 },

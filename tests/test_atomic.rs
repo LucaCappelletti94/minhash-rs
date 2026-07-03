@@ -12,7 +12,7 @@ use minhash_rs::prelude::*;
 
 #[test]
 fn atomic_insert_single_threaded_matches_membership() {
-    let mut minhash = MinHash::<u64, 8>::new();
+    let mut minhash = MinHash::<u64, 8, SipHashes13>::new();
     assert!(minhash.is_empty());
 
     {
@@ -22,8 +22,8 @@ fn atomic_insert_single_threaded_matches_membership() {
     }
 
     assert!(!minhash.is_empty());
-    assert!(minhash.may_contain_value_with_siphashes13(42));
-    assert!(minhash.may_contain_value_with_siphashes13(47));
+    assert!(minhash.may_contain(42));
+    assert!(minhash.may_contain(47));
 }
 
 #[test]
@@ -31,26 +31,26 @@ fn atomic_insert_keyed_single_threaded_matches_membership() {
     let key0 = 0x0123_4567_89AB_CDEF;
     let key1 = 0xFEDC_BA98_7654_3210;
 
-    let mut minhash = MinHash::<u64, 8>::new();
+    let mut minhash = MinHash::<u64, 8, SipHashes13Keyed>::new_with_keys(key0, key1);
     {
         let atomic = minhash.as_atomic();
         atomic.fetch_insert_with_keyed_siphashes13(42, key0, key1, Ordering::Relaxed);
     }
-    assert!(minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1));
+    assert!(minhash.may_contain(42));
 }
 
 #[test]
 fn atomic_insert_matches_non_atomic_insert() {
     // The atomic and non-atomic paths share the hash generator, so a single
     // value inserted either way must yield identical words.
-    let mut atomic_mh = MinHash::<u64, 16>::new();
+    let mut atomic_mh = MinHash::<u64, 16, SipHashes13>::new();
     {
         let atomic = atomic_mh.as_atomic();
         atomic.fetch_insert_with_siphashes13(123_u64, Ordering::Relaxed);
     }
 
-    let mut serial_mh = MinHash::<u64, 16>::new();
-    serial_mh.insert_with_siphashes13(123_u64);
+    let mut serial_mh = MinHash::<u64, 16, SipHashes13>::new();
+    serial_mh.insert(123_u64);
 
     assert_eq!(atomic_mh, serial_mh);
 }
@@ -58,7 +58,7 @@ fn atomic_insert_matches_non_atomic_insert() {
 #[test]
 fn atomic_insert_concurrent_inserts_all_values() {
     // Keep the sizes tiny so this stays fast under the Miri interpreter.
-    let mut minhash = MinHash::<u64, 16>::new();
+    let mut minhash = MinHash::<u64, 16, SipHashes13>::new();
     let values: Vec<u64> = (0..8).collect();
 
     {
@@ -75,7 +75,7 @@ fn atomic_insert_concurrent_inserts_all_values() {
     // Every concurrently inserted value must be reported as possibly present.
     for &value in &values {
         assert!(
-            minhash.may_contain_value_with_siphashes13(value),
+            minhash.may_contain(value),
             "value {value} was inserted concurrently but is not contained",
         );
     }

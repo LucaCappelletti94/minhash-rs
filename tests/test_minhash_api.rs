@@ -28,13 +28,13 @@ fn keyed_siphash13_has_no_false_negatives() {
     let key0 = 0x0123_4567_89AB_CDEF;
     let key1 = 0xFEDC_BA98_7654_3210;
 
-    let mut mh = MinHash::<u64, PERMUTATIONS>::new();
+    let mut mh = MinHash::<u64, PERMUTATIONS, SipHashes13Keyed>::new_with_keys(key0, key1);
     let values: Vec<u64> = (0..50).collect();
     for &v in &values {
-        mh.insert_with_keyed_siphashes13(v, key0, key1);
+        mh.insert(v);
     }
     for &v in &values {
-        assert!(mh.may_contain_value_with_keyed_siphashes13(v, key0, key1));
+        assert!(mh.may_contain(v));
     }
 }
 
@@ -42,13 +42,13 @@ fn keyed_siphash13_has_no_false_negatives() {
 fn keyed_fnv_has_no_false_negatives() {
     let key = 0x0123_4567_89AB_CDEF;
 
-    let mut mh = MinHash::<u64, PERMUTATIONS>::new();
+    let mut mh = MinHash::<u64, PERMUTATIONS, FnvKeyed>::new_with_keys(key, 0);
     let values: Vec<u64> = (0..50).collect();
     for &v in &values {
-        mh.insert_with_keyed_fnv(v, key);
+        mh.insert(v);
     }
     for &v in &values {
-        assert!(mh.may_contain_value_with_keyed_fnv(v, key));
+        assert!(mh.may_contain(v));
     }
 }
 
@@ -56,13 +56,13 @@ fn keyed_fnv_has_no_false_negatives() {
 fn keyed_siphash13_same_key_matches_different_key_differs() {
     let values: Vec<u64> = (0..200).collect();
 
-    let mut a = MinHash::<u64, PERMUTATIONS>::new();
-    let mut same = MinHash::<u64, PERMUTATIONS>::new();
-    let mut other = MinHash::<u64, PERMUTATIONS>::new();
+    let mut a = MinHash::<u64, PERMUTATIONS, SipHashes13Keyed>::new_with_keys(1, 2);
+    let mut same = MinHash::<u64, PERMUTATIONS, SipHashes13Keyed>::new_with_keys(1, 2);
+    let mut other = MinHash::<u64, PERMUTATIONS, SipHashes13Keyed>::new_with_keys(3, 4);
     for &v in &values {
-        a.insert_with_keyed_siphashes13(v, 1, 2);
-        same.insert_with_keyed_siphashes13(v, 1, 2);
-        other.insert_with_keyed_siphashes13(v, 3, 4);
+        a.insert(v);
+        same.insert(v);
+        other.insert(v);
     }
 
     assert_eq!(a, same, "the same key over the same values must match");
@@ -73,11 +73,11 @@ fn keyed_siphash13_same_key_matches_different_key_differs() {
 fn keyed_fnv_different_keys_differ() {
     let values: Vec<u64> = (0..200).collect();
 
-    let mut a = MinHash::<u64, PERMUTATIONS>::new();
-    let mut b = MinHash::<u64, PERMUTATIONS>::new();
+    let mut a = MinHash::<u64, PERMUTATIONS, FnvKeyed>::new_with_keys(7, 0);
+    let mut b = MinHash::<u64, PERMUTATIONS, FnvKeyed>::new_with_keys(99, 0);
     for &v in &values {
-        a.insert_with_keyed_fnv(v, 7);
-        b.insert_with_keyed_fnv(v, 99);
+        a.insert(v);
+        b.insert(v);
     }
     assert_ne!(a, b);
 }

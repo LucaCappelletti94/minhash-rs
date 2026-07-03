@@ -2,11 +2,12 @@
 
 use core::hash::Hash;
 
+use crate::hasher::Hasher;
 use crate::prelude::{Maximal, MinHash, Primitive, XorShift};
 use crate::primitive::ToU64;
 
-impl<Word: Ord + Maximal + XorShift + ToU64, A: Hash, const PERMUTATATIONS: usize>
-    core::iter::FromIterator<A> for MinHash<Word, PERMUTATATIONS>
+impl<Word: Ord + Maximal + XorShift + ToU64, A: Hash, H: Hasher, const PERMUTATIONS: usize>
+    core::iter::FromIterator<A> for MinHash<Word, PERMUTATIONS, H>
 where
     u64: Primitive<Word>,
 {
@@ -21,14 +22,14 @@ where
     /// let minhash = MinHash::<u64, 128>::from_iter(data.clone());
     ///
     /// for item in data {
-    ///     assert!(minhash.may_contain_value_with_siphashes13(item));
+    ///     assert!(minhash.may_contain(item));
     /// }
     ///
     /// ```
     fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
         let mut minhash = Self::new();
         for item in iter {
-            minhash.insert_with_siphashes13(item);
+            minhash.insert(item);
         }
         minhash
     }

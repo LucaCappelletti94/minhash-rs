@@ -19,7 +19,7 @@ where
 {
     let mut original = MinHash::<Word, PERMUTATIONS>::new();
     for &v in values {
-        original.insert_with_siphashes13(v);
+        original.insert(v);
     }
 
     let json = serde_json::to_string(&original).expect("serialization failed");
@@ -54,7 +54,7 @@ fn minhash_array_roundtrips() {
     let mut original = MinHashArray::<u64, PERMUTATIONS, N>::new();
     for i in 0..N {
         for v in 0..20_u64 {
-            original[i].insert_with_siphashes13(v + (i as u64) * 100);
+            original[i].insert(v + (i as u64) * 100);
         }
     }
 

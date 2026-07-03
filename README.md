@@ -23,7 +23,7 @@ As usual, just add the following to your `Cargo.toml` file, although remember to
 
 ```toml
 [dependencies]
-minhash-rs = "0.4.0"
+minhash-rs = "0.5.0"
 ```
 
 ### Example
@@ -60,15 +60,15 @@ For small sets, sparse mode avoids computing all permutation hashes upfront and 
 ```rust
 use minhash_rs::prelude::*;
 
-// Sparse sketch: stores SipHash digests, defers permutation expansion.
+// Sparse sketch: stores hash digests, defers permutation expansion.
 let mut sketch = MinHash::<u64, 128>::sparse();
-sketch.insert_with_siphashes13(42);
-assert!(sketch.may_contain_value_with_siphashes13(42));
+sketch.insert(42);
+assert!(sketch.may_contain(42));
 
 // Sparse-vs-sparse Jaccard computes the true Jaccard index via sorted-list merge.
 let other: MinHash<u64, 128> =
     (0..100u64).fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
-        mh.insert_with_siphashes13(i);
+        mh.insert(i);
         mh
     });
 let jaccard = sketch.estimate_jaccard_index(&other);

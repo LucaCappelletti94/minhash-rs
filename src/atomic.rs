@@ -6,6 +6,7 @@ use core::sync::atomic::Ordering;
 use fnv::FnvHasher;
 use siphasher::sip128::SipHasher13;
 
+use crate::hasher::Hasher as crate_hasher;
 use crate::prelude::{MinHash, Primitive, XorShift};
 use crate::splitmix::SplitMix;
 /// Generate `count` MinHash word hashes from `value` using the provided `hasher`.
@@ -97,11 +98,11 @@ where
     ///
     /// let mut minhash = MinHash::<u64, 128>::new();
     ///
-    /// assert!(!minhash.may_contain_value_with_siphashes13(42));
-    /// minhash.insert_with_siphashes13(42);
-    /// assert!(minhash.may_contain_value_with_siphashes13(42));
-    /// minhash.insert_with_siphashes13(47);
-    /// assert!(minhash.may_contain_value_with_siphashes13(47));
+    /// assert!(!minhash.may_contain(42));
+    /// minhash.insert(42);
+    /// assert!(minhash.may_contain(42));
+    /// minhash.insert(47);
+    /// assert!(minhash.may_contain(47));
     /// ```
     ///
     fn iter_siphashes13_from_value<H: Hash>(value: H) -> impl Iterator<Item = Word> {
@@ -120,15 +121,16 @@ where
     /// ```rust
     /// use minhash_rs::prelude::*;
     ///
-    /// let mut minhash = MinHash::<u64, 128>::new();
-    /// let key0 = 0x0123456789ABCDEF;
-    /// let key1 = 0xFEDCBA9876543210;
+    /// let mut minhash = MinHash::<u64, 128, SipHashes13Keyed>::new_with_keys(
+    ///     0x0123456789ABCDEF,
+    ///     0xFEDCBA9876543210,
+    /// );
     ///
-    /// assert!(!minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1));
-    /// minhash.insert_with_keyed_siphashes13(42, key0, key1);
-    /// assert!(minhash.may_contain_value_with_keyed_siphashes13(42, key0, key1));
-    /// minhash.insert_with_keyed_siphashes13(47, key0, key1);
-    /// assert!(minhash.may_contain_value_with_keyed_siphashes13(47, key0, key1));
+    /// assert!(!minhash.may_contain(42));
+    /// minhash.insert(42);
+    /// assert!(minhash.may_contain(42));
+    /// minhash.insert(47);
+    /// assert!(minhash.may_contain(47));
     /// ```
     ///
     fn iter_keyed_siphashes13_from_value<H: Hash>(
@@ -149,13 +151,13 @@ where
     /// ```rust
     /// use minhash_rs::prelude::*;
     ///
-    /// let mut minhash = MinHash::<u64, 128>::new();
+    /// let mut minhash = MinHash::<u64, 128, Fnv>::new();
     ///
-    /// assert!(!minhash.may_contain_value_with_fnv(42));
-    /// minhash.insert_with_fnv(42);
-    /// assert!(minhash.may_contain_value_with_fnv(42));
-    /// minhash.insert_with_fnv(47);
-    /// assert!(minhash.may_contain_value_with_fnv(47));
+    /// assert!(!minhash.may_contain(42));
+    /// minhash.insert(42);
+    /// assert!(minhash.may_contain(42));
+    /// minhash.insert(47);
+    /// assert!(minhash.may_contain(47));
     /// ```
     ///
     fn iter_fnv_from_value<H: Hash>(value: H) -> impl Iterator<Item = Word> {
@@ -173,22 +175,24 @@ where
     /// ```rust
     /// use minhash_rs::prelude::*;
     ///
-    /// let mut minhash = MinHash::<u64, 128>::new();
-    /// let key = 0x0123456789ABCDEF;
+    /// let mut minhash = MinHash::<u64, 128, FnvKeyed>::new_with_keys(
+    ///     0x0123456789ABCDEF,
+    ///     0,
+    /// );
     ///
-    /// assert!(!minhash.may_contain_value_with_keyed_fnv(42, key));
-    /// minhash.insert_with_keyed_fnv(42, key);
-    /// assert!(minhash.may_contain_value_with_keyed_fnv(42, key));
-    /// minhash.insert_with_keyed_fnv(47, key);
-    /// assert!(minhash.may_contain_value_with_keyed_fnv(47, key));
+    /// assert!(!minhash.may_contain(42));
+    /// minhash.insert(42);
+    /// assert!(minhash.may_contain(42));
+    /// minhash.insert(47);
+    /// assert!(minhash.may_contain(47));
     /// ```
     fn iter_keyed_fnv_from_value<H: Hash>(value: H, key: u64) -> impl Iterator<Item = Word> {
         Self::iter_hashes_from_value(value, FnvHasher::with_key(key))
     }
 }
 
-impl<Word: XorShift + Copy + PartialEq, const PERMUTATIONS: usize> IterHashes<Word, PERMUTATIONS>
-    for MinHash<Word, PERMUTATIONS>
+impl<Word: XorShift + Copy + PartialEq, const PERMUTATIONS: usize, H: crate_hasher>
+    IterHashes<Word, PERMUTATIONS> for MinHash<Word, PERMUTATIONS, H>
 where
     u64: Primitive<Word>,
 {
@@ -197,7 +201,9 @@ where
 /// Reinterpret the words of a [`MinHash`] as a slice of atomics.
 ///
 /// If the sketch is in sparse mode, it is densified first to ensure the atomic
-/// view operates on a valid MinHash signature.
+/// view operates on a valid MinHash signature. The hasher used for atomic
+/// insertion via [`AtomicFetchInsert`] must match the hasher configured on
+/// the [`MinHash`] sketch to produce correct results.
 ///
 /// # Soundness
 /// The atomic view is derived from an exclusive `&mut self` borrow, which gives
@@ -246,7 +252,9 @@ macro_rules! atomic_impls {
         }
 
         #[cfg(target_has_atomic = $has)]
-        impl<const PERMUTATIONS: usize> AsAtomic for MinHash<$word, PERMUTATIONS> {
+        impl<const PERMUTATIONS: usize, H: crate_hasher> AsAtomic
+            for MinHash<$word, PERMUTATIONS, H>
+        {
             type AtomicWord = core::sync::atomic::$atomic;
 
             fn as_atomic(&mut self) -> &[core::sync::atomic::$atomic] {
@@ -284,7 +292,9 @@ macro_rules! atomic_impls {
         }
 
         #[cfg(target_has_atomic = $has)]
-        impl<const PERMUTATIONS: usize> AsAtomic for MinHash<$word, PERMUTATIONS> {
+        impl<const PERMUTATIONS: usize, H: crate_hasher> AsAtomic
+            for MinHash<$word, PERMUTATIONS, H>
+        {
             type AtomicWord = core::sync::atomic::$atomic;
 
             fn as_atomic(&mut self) -> &[core::sync::atomic::$atomic] {
@@ -316,6 +326,12 @@ atomic_impls!(usize, AtomicUsize, "ptr", check);
 /// and call these methods. Membership and Jaccard estimation are performed on
 /// the original [`MinHash`] once the atomic borrow has been released.
 ///
+/// The hasher used for atomic insertion must match the hasher configured on
+/// the [`MinHash`] sketch. For example, [`fetch_insert_with_siphashes13`]
+/// pairs with a sketch using the default `SipHashes13` hasher, while
+/// [`fetch_insert_with_fnv`] requires an `Fnv` hasher. Using a mismatched
+/// hasher produces meaningless membership results and Jaccard estimates.
+///
 /// # Examples
 ///
 /// ```
@@ -329,8 +345,8 @@ atomic_impls!(usize, AtomicUsize, "ptr", check);
 ///     atomic.fetch_insert_with_siphashes13(47, Ordering::Relaxed);
 /// }
 /// assert!(!minhash.is_empty());
-/// assert!(minhash.may_contain_value_with_siphashes13(42));
-/// assert!(minhash.may_contain_value_with_siphashes13(47));
+/// assert!(minhash.may_contain(42));
+/// assert!(minhash.may_contain(47));
 /// ```
 pub trait AtomicFetchInsert {
     /// The (non-atomic) word type stored in each atomic.

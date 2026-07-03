@@ -15,6 +15,54 @@ fn sparse_constructor_starts_empty() {
 }
 
 #[test]
+fn sparse_len_empty() {
+    let mh = MinHash::<u64, 128>::sparse();
+    assert!(mh.is_empty());
+    // Insert one element and verify it's no longer empty.
+    let mut mh = mh;
+    mh.insert_with_siphashes13(42);
+    assert!(!mh.is_empty());
+}
+
+#[test]
+fn to_u64_conversions() {
+    use minhash_rs::primitive::ToU64;
+    assert_eq!(42u64.to_u64(), 42u64);
+    assert_eq!(42usize.to_u64(), 42u64);
+    assert_eq!(42u8.to_u64(), 42u64);
+    assert_eq!(42u16.to_u64(), 42u64);
+    assert_eq!(42u32.to_u64(), 42u64);
+}
+
+#[test]
+fn sparse_from_digest() {
+    use minhash_rs::primitive::SparseWord;
+    assert_eq!(
+        <u64 as SparseWord>::from_digest(0xDEAD_BEEF_CAFE_BABE),
+        0xDEAD_BEEF_CAFE_BABE
+    );
+    assert_eq!(
+        <usize as SparseWord>::from_digest(0xDEAD_BEEF_CAFE_BABE),
+        0xDEAD_BEEF_CAFE_BABE_usize
+    );
+}
+
+#[test]
+fn sparse_sentinel_boundary() {
+    // Fill the sketch to exactly capacity (PERMUTATIONS-1 = 127 digests).
+    // The sentinel write path (sentinel < PERMUTATIONS) should be skipped
+    // when the last slot is occupied.
+    let mut mh = MinHash::<u64, 128>::sparse();
+    for i in 0..127_u64 {
+        mh.insert_with_siphashes13(i);
+    }
+    assert!(mh.is_full());
+    // Insert one more to trigger densification.
+    mh.insert_with_siphashes13(9999);
+    assert!(!mh.is_empty());
+}
+
+#[test]
 fn sparse_no_false_negatives_siphash() {
     let mut mh = MinHash::<u64, 128>::sparse();
     for i in 0..1000_u64 {

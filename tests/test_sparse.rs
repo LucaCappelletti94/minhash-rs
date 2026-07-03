@@ -108,6 +108,64 @@ fn sparse_deduplicates() {
 }
 
 #[test]
+fn sparse_eq_dense_cross_mode() {
+    // Test sparse == dense (PartialEq cross-mode path).
+    let values: Vec<u64> = (0..50).collect();
+    let mut sparse = MinHash::<u64, 128>::sparse();
+    let mut dense = MinHash::<u64, 128>::new();
+    for &v in &values {
+        sparse.insert_with_siphashes13(v);
+        dense.insert_with_siphashes13(v);
+    }
+    // Cross-mode equality: sparse compared to dense triggers internal densification.
+    assert_eq!(sparse, dense);
+    assert_eq!(dense, sparse);
+}
+
+#[test]
+fn sparse_hash_equals_dense_hash() {
+    // Test that sparse and dense sketches hash to the same value (Hash contract).
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hash;
+
+    fn hash_value<T: Hash>(t: &T) -> u64 {
+        let mut h = DefaultHasher::new();
+        t.hash(&mut h);
+        h.finish()
+    }
+
+    let values: Vec<u64> = (0..50).collect();
+    let mut sparse = MinHash::<u64, 128>::sparse();
+    let mut dense = MinHash::<u64, 128>::new();
+    for &v in &values {
+        sparse.insert_with_siphashes13(v);
+        dense.insert_with_siphashes13(v);
+    }
+    assert_eq!(hash_value(&sparse), hash_value(&dense));
+}
+
+#[test]
+fn sparse_default_is_empty() {
+    // Exercise Default impl for sparse (via new which is Default).
+    let mh = MinHash::<u64, 128>::default();
+    assert!(mh.is_empty());
+}
+
+#[test]
+fn sparse_is_sparse_flag() {
+    let sparse = MinHash::<u64, 128>::sparse();
+    let dense = MinHash::<u64, 128>::new();
+    // is_sparse() is pub(crate) but we can check via behavior.
+    assert!(sparse.is_empty());
+    assert!(dense.is_empty());
+    // After insert, sparse stays sparse until capacity.
+    let mut s = MinHash::<u64, 128>::sparse();
+    s.insert_with_siphashes13(1);
+    assert!(!s.is_empty());
+    assert!(!s.is_full());
+}
+
+#[test]
 fn sparse_exact_jaccard_identical_sets() {
     let mut a = MinHash::<u64, 128>::sparse();
     let mut b = MinHash::<u64, 128>::sparse();

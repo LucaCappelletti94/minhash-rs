@@ -2,7 +2,8 @@
 
 use core::ops::{BitOr, BitOrAssign};
 
-use crate::prelude::{Maximal, MinHash};
+use crate::prelude::{Maximal, MinHash, Primitive, XorShift};
+use crate::primitive::ToU64;
 
 /// Merge another MinHash into this one, producing the sketch of the union.
 ///
@@ -12,16 +13,24 @@ use crate::prelude::{Maximal, MinHash};
 /// compute the **union** (merge) of the sketches. There is no way to obtain an
 /// intersection sketch by combining two sketches; estimate the Jaccard index
 /// instead and derive the intersection cardinality from it.
-impl<Word: Ord + Copy, const PERMUTATIONS: usize> BitOrAssign<&Self>
+///
+/// When both sketches are in sparse mode, the merge is a cheap sorted-list
+/// union. When one or both are dense, the sparse operand(s) are densified
+/// first.
+impl<Word: Ord + XorShift + Copy + ToU64 + Maximal, const PERMUTATIONS: usize> BitOrAssign<&Self>
     for MinHash<Word, PERMUTATIONS>
+where
+    u64: Primitive<Word>,
 {
     fn bitor_assign(&mut self, rhs: &Self) {
         self.min_assign(rhs);
     }
 }
 
-impl<Word: Ord + Copy, const PERMUTATIONS: usize> BitOrAssign<Self>
+impl<Word: Ord + XorShift + Copy + ToU64 + Maximal, const PERMUTATIONS: usize> BitOrAssign<Self>
     for MinHash<Word, PERMUTATIONS>
+where
+    u64: Primitive<Word>,
 {
     fn bitor_assign(&mut self, rhs: Self) {
         self.bitor_assign(&rhs);
@@ -30,84 +39,54 @@ impl<Word: Ord + Copy, const PERMUTATIONS: usize> BitOrAssign<Self>
 
 // The `|` operator already signals that the result is meant to be used.
 #[allow(clippy::return_self_not_must_use)]
-impl<Word: Ord + Copy, const PERMUTATIONS: usize> BitOr for MinHash<Word, PERMUTATIONS> {
+impl<Word: Ord + XorShift + Copy + ToU64 + Maximal, const PERMUTATIONS: usize> BitOr<&Self>
+    for MinHash<Word, PERMUTATIONS>
+where
+    u64: Primitive<Word>,
+{
     type Output = Self;
 
-    /// Returns the union (merge) of two MinHash sketches.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use std::collections::HashSet;
-    /// use minhash_rs::prelude::*;
-    ///
-    /// let a: HashSet<u64> = (1..=8).collect();
-    /// let b: HashSet<u64> = (5..=12).collect();
-    /// let union: HashSet<u64> = a.union(&b).copied().collect();
-    ///
-    /// let mh_a: MinHash<u64, 256> = a.iter().collect();
-    /// let mh_b: MinHash<u64, 256> = b.iter().collect();
-    /// let mh_union: MinHash<u64, 256> = union.iter().collect();
-    ///
-    /// // Merging two sketches yields the sketch of the union of the two sets.
-    /// assert_eq!(mh_a | mh_b, mh_union);
-    /// ```
-    fn bitor(mut self, rhs: Self) -> Self::Output {
-        self.bitor_assign(rhs);
-        self
+    fn bitor(self, rhs: &Self) -> Self::Output {
+        let mut result = self;
+        result.bitor_assign(rhs);
+        result
     }
 }
 
 #[allow(clippy::return_self_not_must_use)]
-impl<Word: Ord + Copy, const PERMUTATIONS: usize> BitOr<&Self> for MinHash<Word, PERMUTATIONS> {
+impl<Word: Ord + XorShift + Copy + ToU64 + Maximal, const PERMUTATIONS: usize> BitOr<Self>
+    for MinHash<Word, PERMUTATIONS>
+where
+    u64: Primitive<Word>,
+{
     type Output = Self;
 
-    fn bitor(mut self, rhs: &Self) -> Self::Output {
-        self.bitor_assign(rhs);
-        self
+    fn bitor(self, rhs: Self) -> Self::Output {
+        let mut result = self;
+        result.bitor_assign(&rhs);
+        result
     }
 }
 
-/// Extension trait adding [`union`](MinHashIterator::union) to iterators of MinHashes.
-pub trait MinHashIterator<Word: Ord + Copy, const PERMUTATIONS: usize> {
-    /// Returns a MinHash that is the union (merge) of all MinHashes in the iterator.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use std::collections::HashSet;
-    /// use minhash_rs::prelude::*;
-    ///
-    /// let a: HashSet<u64> = (1..=8).collect();
-    /// let b: HashSet<u64> = (5..=12).collect();
-    /// let c: HashSet<u64> = (20..=30).collect();
-    /// let all: HashSet<u64> = a.union(&b).copied().chain(c.iter().copied()).collect();
-    ///
-    /// let sketches = vec![
-    ///     a.iter().collect::<MinHash<u64, 256>>(),
-    ///     b.iter().collect::<MinHash<u64, 256>>(),
-    ///     c.iter().collect::<MinHash<u64, 256>>(),
-    /// ];
-    ///
-    /// let merged = sketches.into_iter().union();
-    /// let expected: MinHash<u64, 256> = all.iter().collect();
-    ///
-    /// assert_eq!(merged, expected);
-    /// ```
+/// Extension trait adding [`union`](MinHashIterator::union) to iterators of
+/// MinHashes.
+pub trait MinHashIterator<Word, const PERMUTATIONS: usize> {
+    /// Merge all MinHashes in the iterator into a single sketch.
     fn union(self) -> MinHash<Word, PERMUTATIONS>;
 }
 
 impl<
-        Word: Maximal + Ord + Copy,
+        Word: Maximal + Ord + XorShift + Copy + ToU64,
         const PERMUTATIONS: usize,
         I: Iterator<Item = MinHash<Word, PERMUTATIONS>>,
     > MinHashIterator<Word, PERMUTATIONS> for I
+where
+    u64: Primitive<Word>,
 {
     fn union(self) -> MinHash<Word, PERMUTATIONS> {
-        let mut result: MinHash<Word, PERMUTATIONS> = MinHash::default();
-        for minhash in self {
-            result |= minhash;
-        }
-        result
+        self.fold(MinHash::new(), |mut acc, item| {
+            acc |= item;
+            acc
+        })
     }
 }

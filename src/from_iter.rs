@@ -3,8 +3,9 @@
 use core::hash::Hash;
 
 use crate::prelude::{Maximal, MinHash, Primitive, XorShift};
+use crate::primitive::ToU64;
 
-impl<Word: Ord + Maximal + XorShift, A: Hash, const PERMUTATATIONS: usize>
+impl<Word: Ord + Maximal + XorShift + ToU64, A: Hash, const PERMUTATATIONS: usize>
     core::iter::FromIterator<A> for MinHash<Word, PERMUTATATIONS>
 where
     u64: Primitive<Word>,

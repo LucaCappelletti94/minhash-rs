@@ -21,6 +21,7 @@ use std::io::Write;
 use hyperloglog_rs::prelude::*;
 use indicatif::ParallelProgressIterator;
 use minhash_rs::prelude::*;
+use minhash_rs::primitive::ToU64;
 use rayon::prelude::*;
 
 /// Return set with up to the provided number of elements.
@@ -39,7 +40,7 @@ fn populate_set(elements: usize, mut random_state: u64) -> HashSet<u64> {
 /// to a CSV file so to avoid code duplication as much as possible.
 fn estimate_jaccard_index_minhash_for_permutation<
     const PERMUTATIONS: usize,
-    Word: Maximal + Copy + Ord + XorShift,
+    Word: Maximal + Copy + Ord + XorShift + ToU64,
 >(
     elements: usize,
     first_set: &HashSet<u64>,
@@ -165,7 +166,7 @@ fn estimate_jaccard_index_hll<
 
 /// Method to compute and write the results for a given constant parametrization of MinHash
 /// to a CSV file so to avoid code duplication as much as possible.
-fn estimate_jaccard_index_minhash<Word: Maximal + Copy + Ord + XorShift>(
+fn estimate_jaccard_index_minhash<Word: Maximal + Copy + Ord + XorShift + ToU64>(
     elements: usize,
     first_set: &HashSet<u64>,
     second_set: &HashSet<u64>,

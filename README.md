@@ -23,7 +23,7 @@ As usual, just add the following to your `Cargo.toml` file, although remember to
 
 ```toml
 [dependencies]
-minhash-rs = "0.3.0"
+minhash-rs = "0.4.0"
 ```
 
 ### Example
@@ -53,19 +53,23 @@ let union: HashSet<u64> = left.union(&right).copied().collect();
 assert_eq!(union_sketch, union.iter().collect());
 ```
 
-### Locality-sensitive hashing (LSH)
+### Sparse mode
 
-Split a signature into bands to turn it into candidate keys for near-duplicate detection and similarity joins:
+For small sets, sparse mode avoids computing all permutation hashes upfront and stores compact digests instead. Within capacity the Jaccard estimate is **exact** (limited only by hash collisions in the underlying SipHash or FNV digest, not by MinHash approximation). Once the sketch fills, it auto-densifies and behaves like a standard MinHash:
 
 ```rust
 use minhash_rs::prelude::*;
 
-let left: MinHash<u64, 128> = (0..100u64).collect();
-let right: MinHash<u64, 128> = (0..100u64).collect();
+// Sparse sketch: stores SipHash digests, defers permutation expansion.
+let mut sketch = MinHash::<u64, 128>::sparse();
+sketch.insert_with_siphashes13(42);
+assert!(sketch.may_contain_value_with_siphashes13(42));
 
-let left_bands = left.band_hashes::<16>();
-let right_bands = right.band_hashes::<16>();
-assert!(left_bands.iter().zip(&right_bands).any(|(a, b)| a == b));
+// Sparse-vs-sparse Jaccard computes the true Jaccard index via sorted-list merge.
+let other: MinHash<u64, 128> =
+    (0..100u64).fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
+        mh.insert_with_siphashes13(i);
+        mh
+    });
+let jaccard = sketch.estimate_jaccard_index(&other);
 ```
-
-New benchmarks are under way.

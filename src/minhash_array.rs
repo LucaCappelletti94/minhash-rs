@@ -6,14 +6,41 @@ use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 
 use crate::prelude::*;
+use crate::primitive::ToU64;
 
-/// An array of `N` independent [`MinHash`] sketches, each with `PERMUTATIONS` words.
+/// An array of `N` independent [`MinHash`] sketches, each with `PERMUTATIONS`
+/// words.
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(bound(serialize = "Word: Serialize", deserialize = "Word: Deserialize<'de>"))]
 pub struct MinHashArray<Word, const PERMUTATIONS: usize, const N: usize> {
     #[serde(with = "BigArray")]
     counters: [MinHash<Word, PERMUTATIONS>; N],
+}
+impl<
+        Word: Ord + XorShift + Copy + ToU64 + Maximal + PartialEq,
+        const PERMUTATIONS: usize,
+        const N: usize,
+    > PartialEq for MinHashArray<Word, PERMUTATIONS, N>
+where
+    u64: Primitive<Word>,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.counters
+            .iter()
+            .zip(other.counters.iter())
+            .all(|(a, b)| a == b)
+    }
+}
+
+impl<
+        Word: Ord + XorShift + Copy + ToU64 + Maximal + PartialEq,
+        const PERMUTATIONS: usize,
+        const N: usize,
+    > Eq for MinHashArray<Word, PERMUTATIONS, N>
+where
+    u64: Primitive<Word>,
+{
 }
 
 impl<Word: Maximal, const PERMUTATIONS: usize, const N: usize> Default

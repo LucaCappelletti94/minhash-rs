@@ -437,79 +437,78 @@ where
     #[allow(dead_code)]
     /// Merge another sparse sketch into this one.
     ///
-    /// Uses a two-pointer sorted merge into a stack buffer. On overflow,
-    /// densifies both operands and falls back to dense union.
+    /// Collects both sides' encoded digests into stack buffers, performs a
+    /// two-pointer merge, and writes the result back. On overflow, densifies
+    /// both operands and falls back to dense union.
     fn sparse_union(&mut self, other: &Self) {
-        // Collect digests first to avoid borrow conflicts.
-        let mut a_digests: [u64; PERMUTATIONS] = [0; PERMUTATIONS];
-        let mut a_count = 0usize;
-        for d in self.iter_digests() {
-            if a_count < PERMUTATIONS {
-                a_digests[a_count] = d;
-                a_count += 1;
-            }
-        }
+        let zero: Word = 0u64.convert();
 
-        let mut b_digests: [u64; PERMUTATIONS] = [0; PERMUTATIONS];
-        let mut b_count = 0usize;
-        for d in other.iter_digests() {
-            if b_count < PERMUTATIONS {
-                b_digests[b_count] = d;
-                b_count += 1;
-            }
-        }
-
-        // Two-pointer sorted merge.
-        let mut merged: [u64; PERMUTATIONS] = [0; PERMUTATIONS];
-        let mut count = 0usize;
-        let (mut ai, mut bi) = (0usize, 0usize);
-
-        while ai < a_count && bi < b_count && count < PERMUTATIONS {
-            match a_digests[ai].cmp(&b_digests[bi]) {
-                core::cmp::Ordering::Equal => {
-                    merged[count] = a_digests[ai];
-                    count += 1;
-                    ai += 1;
-                    bi += 1;
-                }
-                core::cmp::Ordering::Less => {
-                    merged[count] = a_digests[ai];
-                    count += 1;
-                    ai += 1;
-                }
-                core::cmp::Ordering::Greater => {
-                    merged[count] = b_digests[bi];
-                    count += 1;
-                    bi += 1;
-                }
-            }
-        }
-        while ai < a_count && count < PERMUTATIONS {
-            merged[count] = a_digests[ai];
-            count += 1;
-            ai += 1;
-        }
-        while bi < b_count && count < PERMUTATIONS {
-            merged[count] = b_digests[bi];
-            count += 1;
-            bi += 1;
-        }
+        // Quick lengths via reverse scan (O(1) when full).
+        let a_len = self.words[1..]
+            .iter()
+            .rposition(|&w| w != zero)
+            .map_or(0, |i| i + 1);
+        let b_len = other.words[1..]
+            .iter()
+            .rposition(|&w| w != zero)
+            .map_or(0, |i| i + 1);
 
         let capacity = PERMUTATIONS.saturating_sub(1);
-        if count <= capacity {
-            let zero: Word = 0u64.convert();
-            self.words = [zero; PERMUTATIONS];
-            for (i, t) in self.words[1..=count].iter_mut().enumerate() {
-                *t = merged[i].wrapping_add(1).convert();
-            }
-            if 1 + count < PERMUTATIONS {
-                self.words[1 + count] = zero;
-            }
-        } else {
+
+        // If the union definitely won't fit, skip the merge and densify.
+        if a_len + b_len > capacity {
             self.densify();
             let mut other_dense = *other;
             other_dense.densify();
             self.min_assign_dense(&other_dense);
+            return;
+        }
+
+        // Collect both sides' encoded digests into stack buffers.
+        // Encoded values preserve sort order (wrapping_add(1) is monotonic).
+        let mut a_buf: [Word; PERMUTATIONS] = [zero; PERMUTATIONS];
+        let mut b_buf: [Word; PERMUTATIONS] = [zero; PERMUTATIONS];
+        a_buf[..a_len].copy_from_slice(&self.words[1..=a_len]);
+        b_buf[..b_len].copy_from_slice(&other.words[1..=b_len]);
+
+        // Two-pointer merge: a_buf[0..a_len] + b_buf[0..b_len] → self.words[1..]
+        let (mut ai, mut bi) = (0usize, 0usize);
+        let mut wi = 1usize;
+
+        while ai < a_len && bi < b_len {
+            match a_buf[ai].cmp(&b_buf[bi]) {
+                core::cmp::Ordering::Less => {
+                    self.words[wi] = a_buf[ai];
+                    ai += 1;
+                    wi += 1;
+                }
+                core::cmp::Ordering::Equal => {
+                    self.words[wi] = a_buf[ai];
+                    ai += 1;
+                    bi += 1;
+                    wi += 1;
+                }
+                core::cmp::Ordering::Greater => {
+                    self.words[wi] = b_buf[bi];
+                    bi += 1;
+                    wi += 1;
+                }
+            }
+        }
+        while ai < a_len {
+            self.words[wi] = a_buf[ai];
+            ai += 1;
+            wi += 1;
+        }
+        while bi < b_len {
+            self.words[wi] = b_buf[bi];
+            bi += 1;
+            wi += 1;
+        }
+
+        // Place sentinel after last digest.
+        if wi < PERMUTATIONS {
+            self.words[wi] = zero;
         }
     }
 

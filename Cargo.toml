@@ -68,6 +68,9 @@ proptest = "1"
 [[bench]]
 name = "bench_insert"
 harness = false
+[[bench]]
+name = "bench_sparse"
+harness = false
 # Optimize tests so the data-structure heavy tests run quickly, while keeping
 # overflow checks and debug assertions on to catch bugs.
 [profile.test]

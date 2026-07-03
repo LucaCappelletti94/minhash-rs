@@ -55,7 +55,7 @@ assert_eq!(union_sketch, union.iter().collect());
 
 ### Sparse mode
 
-For small sets, sparse mode avoids computing all permutation hashes upfront and stores compact digests instead. It auto-densifies when the sketch fills:
+For small sets, sparse mode avoids computing all permutation hashes upfront and stores compact digests instead. Within capacity the Jaccard estimate is **exact** (limited only by hash collisions in the underlying SipHash or FNV digest, not by MinHash approximation). Once the sketch fills, it auto-densifies and behaves like a standard MinHash:
 
 ```rust
 use minhash_rs::prelude::*;
@@ -65,7 +65,11 @@ let mut sketch = MinHash::<u64, 128>::sparse();
 sketch.insert_with_siphashes13(42);
 assert!(sketch.may_contain_value_with_siphashes13(42));
 
-// Sparse-vs-sparse Jaccard is exact (no approximation error).
-let other: MinHash<u64, 128> = (0..100u64).fold(MinHash::<u64, 128>::sparse(), |mut mh, i| { mh.insert_with_siphashes13(i); mh });
+// Sparse-vs-sparse Jaccard computes the true Jaccard index via sorted-list merge.
+let other: MinHash<u64, 128> =
+    (0..100u64).fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
+        mh.insert_with_siphashes13(i);
+        mh
+    });
 let jaccard = sketch.estimate_jaccard_index(&other);
 ```

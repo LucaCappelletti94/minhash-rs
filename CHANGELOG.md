@@ -7,7 +7,7 @@ loosely based on Keep a Changelog, and the project follows semantic versioning.
 
 ### Added
 
-- Sparse mode via `MinHash::sparse()`. Instead of precomputing all permutation hashes, the sketch stores SipHash/FNV digests in a sorted list and defers XorShift expansion until auto-densification. Sparse insert is 6x faster for small sets (100 elements), `may_contain` is 10x faster, and sparse-vs-sparse Jaccard is exact. Sparse mode is gated to 64-bit word types (`u64`, `usize` on 64-bit platforms).
+- Sparse mode via `MinHash::sparse()`. Instead of precomputing all permutation hashes, the sketch stores SipHash/FNV digests in a sorted list and defers XorShift expansion until auto-densification. Within capacity, sparse-vs-sparse Jaccard is exact (limited only by hash collisions, not MinHash approximation). Sparse insert is 6x faster for small sets (100 elements) and `may_contain` is 10x faster. Sparse mode is gated to 64-bit word types (`u64`, `usize` on 64-bit platforms).
 
 ## Unreleased
 

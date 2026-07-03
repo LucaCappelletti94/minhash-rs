@@ -3,11 +3,18 @@
 All notable changes to this project are documented in this file. The format is
 loosely based on Keep a Changelog, and the project follows semantic versioning.
 
+## 0.4.0
+
+### Added
+
+- Sparse mode via `MinHash::sparse()`. Instead of precomputing all permutation hashes, the sketch stores SipHash/FNV digests in a sorted list and defers XorShift expansion until auto-densification. Sparse insert is 6x faster for small sets (100 elements), `may_contain` is 10x faster, and sparse-vs-sparse Jaccard is exact. Sparse mode is gated to 64-bit word types (`u64`, `usize` on 64-bit platforms).
+
 ## Unreleased
 
 ### Added
 
 - `lsh` module providing locality-sensitive hashing banding for signatures. `MinHash::band_hashes::<BANDS>()` splits a signature into `BANDS` equal-sized bands and returns the FNV-1a `band_hash` of each, the standard primitive for turning MinHash sketches into near-duplicate candidate pairs.
+
 
 ## 0.3.0
 

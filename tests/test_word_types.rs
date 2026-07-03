@@ -9,10 +9,11 @@
 #![allow(clippy::float_cmp)]
 
 use minhash_rs::prelude::*;
+use minhash_rs::primitive::ToU64;
 
 fn no_false_negatives<Word, const PERMUTATIONS: usize>(values: &[u64])
 where
-    Word: XorShift + Copy + Ord + Maximal,
+    Word: XorShift + Copy + Ord + Maximal + ToU64,
     u64: Primitive<Word>,
 {
     let mut mh = MinHash::<Word, PERMUTATIONS>::new();

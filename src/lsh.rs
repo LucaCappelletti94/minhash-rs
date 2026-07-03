@@ -1,9 +1,9 @@
 //! LSH banding for MinHash signatures.
 
-use crate::prelude::MinHash;
+use crate::prelude::{Maximal, MinHash, Primitive, XorShift};
+use crate::primitive::ToU64;
 use core::hash::{Hash, Hasher};
 use fnv::FnvHasher;
-
 /// FNV-1a hash of a band of MinHash registers.
 ///
 /// ```
@@ -69,8 +69,15 @@ impl<const BANDS: usize> Iterator for BandMatches<'_, BANDS> {
     }
 }
 
-impl<Word: Hash, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
-    /// Band hashes of this signature: `BANDS` consecutive bands of `PERMUTATIONS / BANDS` registers.
+impl<Word: Hash + Ord + XorShift + Copy + ToU64 + Maximal, const PERMUTATIONS: usize>
+    MinHash<Word, PERMUTATIONS>
+where
+    u64: Primitive<Word>,
+{
+    /// Band hashes of this signature: `BANDS` consecutive bands of
+    /// `PERMUTATIONS / BANDS` registers.
+    ///
+    /// If the sketch is in sparse mode, it is densified first.
     ///
     /// ```
     /// use minhash_rs::prelude::*;
@@ -81,10 +88,20 @@ impl<Word: Hash, const PERMUTATIONS: usize> MinHash<Word, PERMUTATIONS> {
     /// ```
     #[must_use]
     pub fn band_hashes<const BANDS: usize>(&self) -> [u64; BANDS] {
-        let registers = self.as_ref();
-        core::array::from_fn(|band| {
-            let rows = PERMUTATIONS / BANDS;
-            band_hash(&registers[band * rows..(band + 1) * rows])
-        })
+        if self.is_sparse() {
+            let mut dense: [Word; PERMUTATIONS] = core::array::from_fn(|_| Word::maximal());
+            self.densify_into(&mut dense);
+            let registers = dense.as_slice();
+            core::array::from_fn(|band| {
+                let rows = PERMUTATIONS / BANDS;
+                band_hash(&registers[band * rows..(band + 1) * rows])
+            })
+        } else {
+            let registers = self.as_ref();
+            core::array::from_fn(|band| {
+                let rows = PERMUTATIONS / BANDS;
+                band_hash(&registers[band * rows..(band + 1) * rows])
+            })
+        }
     }
 }

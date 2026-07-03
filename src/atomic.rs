@@ -8,7 +8,6 @@ use siphasher::sip128::SipHasher13;
 
 use crate::prelude::{MinHash, Primitive, XorShift};
 use crate::splitmix::SplitMix;
-
 /// Generate `count` MinHash word hashes from `value` using the provided `hasher`.
 ///
 /// Used by the [`IterHashes`] trait for external consumers who need the
@@ -18,8 +17,8 @@ use crate::splitmix::SplitMix;
 /// ever reaches zero would stay zero for the rest of the stream. In particular,
 /// when the seed truncates to zero (about one value in 256 for an 8-bit word)
 /// the whole stream would collapse to zero and saturate the sketch from a
-/// single insertion. Remapping zero to one keeps the stream non-degenerate for
-/// every word width.
+/// single insertion. Using `saturating_add(1)` keeps the stream non-degenerate
+/// for every word width and reserves zero as the sparse mode flag.
 fn iter_word_hashes<Word, H, HS>(
     value: H,
     mut hasher: HS,
@@ -180,6 +179,8 @@ where
     /// assert!(!minhash.may_contain_value_with_keyed_fnv(42, key));
     /// minhash.insert_with_keyed_fnv(42, key);
     /// assert!(minhash.may_contain_value_with_keyed_fnv(42, key));
+    /// minhash.insert_with_keyed_fnv(47, key);
+    /// assert!(minhash.may_contain_value_with_keyed_fnv(47, key));
     /// ```
     fn iter_keyed_fnv_from_value<H: Hash>(value: H, key: u64) -> impl Iterator<Item = Word> {
         Self::iter_hashes_from_value(value, FnvHasher::with_key(key))
@@ -194,6 +195,9 @@ where
 }
 
 /// Reinterpret the words of a [`MinHash`] as a slice of atomics.
+///
+/// If the sketch is in sparse mode, it is densified first to ensure the atomic
+/// view operates on a valid MinHash signature.
 ///
 /// # Soundness
 /// The atomic view is derived from an exclusive `&mut self` borrow, which gives
@@ -220,8 +224,12 @@ pub trait AsAtomic {
 // atomics simply do not get the `u64` atomic API, while the rest of the crate
 // (and narrower atomics) keeps working. The atomic type is referenced through
 // its full path so the gated-out widths are never even named.
+//
+// The `$sparse:ident` parameter controls whether sparse-mode densification is
+// checked: `check` for u64/usize (which support sparse mode), `skip` for narrow
+// types (which cannot be sparse since their MAX < 256).
 macro_rules! atomic_impls {
-    ($word:ty, $atomic:ident, $has:literal) => {
+    ($word:ty, $atomic:ident, $has:literal, check) => {
         #[cfg(target_has_atomic = $has)]
         impl AtomicFetchMin for core::sync::atomic::$atomic {
             type Word = $word;
@@ -242,6 +250,45 @@ macro_rules! atomic_impls {
             type AtomicWord = core::sync::atomic::$atomic;
 
             fn as_atomic(&mut self) -> &[core::sync::atomic::$atomic] {
+                if self.is_sparse() {
+                    self.densify();
+                }
+                let words: &mut [$word] = self.as_mut();
+                // SAFETY: the atomic has the same size and alignment as `$word`,
+                // so the slice layout (data pointer and length) is identical.
+                // The atomic view is derived from a unique `&mut` borrow, so it
+                // carries read-write provenance, and that exclusive borrow is
+                // held for the lifetime of the returned slice, ruling out
+                // concurrent non-atomic access to the same memory.
+                unsafe {
+                    core::mem::transmute::<&mut [$word], &[core::sync::atomic::$atomic]>(words)
+                }
+            }
+        }
+    };
+
+    ($word:ty, $atomic:ident, $has:literal, skip) => {
+        #[cfg(target_has_atomic = $has)]
+        impl AtomicFetchMin for core::sync::atomic::$atomic {
+            type Word = $word;
+
+            fn set_min(&self, value: Self::Word, ordering: Ordering) {
+                let mut current = self.load(Ordering::Relaxed);
+                while value < current {
+                    match self.compare_exchange_weak(current, value, ordering, Ordering::Relaxed) {
+                        Ok(_) => break,
+                        Err(observed) => current = observed,
+                    }
+                }
+            }
+        }
+
+        #[cfg(target_has_atomic = $has)]
+        impl<const PERMUTATIONS: usize> AsAtomic for MinHash<$word, PERMUTATIONS> {
+            type AtomicWord = core::sync::atomic::$atomic;
+
+            fn as_atomic(&mut self) -> &[core::sync::atomic::$atomic] {
+                // Narrow word types cannot be sparse (MAX < 256), so no check needed.
                 let words: &mut [$word] = self.as_mut();
                 // SAFETY: the atomic has the same size and alignment as `$word`,
                 // so the slice layout (data pointer and length) is identical.
@@ -257,11 +304,11 @@ macro_rules! atomic_impls {
     };
 }
 
-atomic_impls!(u8, AtomicU8, "8");
-atomic_impls!(u16, AtomicU16, "16");
-atomic_impls!(u32, AtomicU32, "32");
-atomic_impls!(u64, AtomicU64, "64");
-atomic_impls!(usize, AtomicUsize, "ptr");
+atomic_impls!(u8, AtomicU8, "8", skip);
+atomic_impls!(u16, AtomicU16, "16", skip);
+atomic_impls!(u32, AtomicU32, "32", skip);
+atomic_impls!(u64, AtomicU64, "64", check);
+atomic_impls!(usize, AtomicUsize, "ptr", check);
 
 /// Concurrent insertion into a slice of atomic MinHash words.
 ///

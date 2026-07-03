@@ -11,13 +11,15 @@
 #![allow(clippy::float_cmp)]
 
 use minhash_rs::prelude::*;
+use minhash_rs::primitive::ToU64;
 use proptest::prelude::*;
 use serde::{de::DeserializeOwned, Serialize};
 
 const PERMUTATIONS: usize = 64;
 
 /// The full bound set the per-word helpers share.
-trait Word: XorShift + Copy + Ord + Maximal + core::fmt::Debug + Serialize + DeserializeOwned
+trait Word:
+    XorShift + Copy + Ord + Maximal + ToU64 + core::fmt::Debug + Serialize + DeserializeOwned
 where
     u64: Primitive<Self>,
 {
@@ -25,7 +27,7 @@ where
 
 impl<T> Word for T
 where
-    T: XorShift + Copy + Ord + Maximal + core::fmt::Debug + Serialize + DeserializeOwned,
+    T: XorShift + Copy + Ord + Maximal + ToU64 + core::fmt::Debug + Serialize + DeserializeOwned,
     u64: Primitive<T>,
 {
 }

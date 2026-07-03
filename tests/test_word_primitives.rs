@@ -83,5 +83,8 @@ fn hash_stream_produces_diverse_values() {
 
     // Two disjoint sets should have Jaccard near 0, not 1.
     let jaccard = a.estimate_jaccard_index(&b);
-    assert!(jaccard < 0.1, "Jaccard {jaccard} is too high for disjoint sets");
+    assert!(
+        jaccard < 0.1,
+        "Jaccard {jaccard} is too high for disjoint sets"
+    );
 }

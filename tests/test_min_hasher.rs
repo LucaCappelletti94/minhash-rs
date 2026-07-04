@@ -152,3 +152,34 @@ fn cross_wrapper_sparse_values_vs_minhash() {
         "SparseValues vs MinHash trait path must match dense oracle"
     );
 }
+
+#[test]
+fn minhasher_trait_may_contain_dispatches_for_minhash() {
+    // Defends the `may_contain -> false` mutant on the `MinHasher` impl for
+    // `MinHash`: a value that was inserted must be reported present.
+    let mut mh = MinHash::<u64, 128>::new();
+    let inserted: alloc::vec::Vec<u64> = (0u64..30).collect();
+    for &v in &inserted {
+        <MinHash<u64, 128> as MinHasher<128, u64>>::insert(&mut mh, v);
+    }
+    for &v in &inserted {
+        assert!(
+            <MinHash<u64, 128> as MinHasher<128, u64>>::may_contain(&mh, v),
+            "trait may_contain must return true for inserted value {v}"
+        );
+    }
+
+    // Defends the `may_contain -> true` mutant on the `MinHasher` impl for
+    // `MinHash`. On an empty sketch every register sits at the maximal
+    // sentinel, so inserting any real value would strictly lower at least
+    // one register, which check_hash_stream translates into a proof of
+    // absence. If the trait method is mutated to always return true this
+    // assertion fires.
+    let empty = MinHash::<u64, 128>::new();
+    for v in 0u64..64 {
+        assert!(
+            !<MinHash<u64, 128> as MinHasher<128, u64>>::may_contain(&empty, v),
+            "may_contain on an empty sketch must be false for value {v}"
+        );
+    }
+}

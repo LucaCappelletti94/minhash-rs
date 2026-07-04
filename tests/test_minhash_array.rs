@@ -78,14 +78,20 @@ fn derived_impls_run() {
     let a = MinHashArray::<u64, PERMUTATIONS, N>::new();
     assert_eq!(a, MinHashArray::<u64, PERMUTATIONS, N>::default());
 
-    // Debug::fmt
-    let _ = format!("{:?}", &a);
+    // Debug::fmt: assert non-empty and names the type. Defends the
+    // `Debug::fmt -> Ok(Default::default())` mutant.
+    let rendered = format!("{a:?}");
+    assert!(!rendered.is_empty());
+    assert!(
+        rendered.contains("MinHashArray"),
+        "Debug output should name the type, got {rendered:?}"
+    );
 
     // Clone::clone
     let cloned = a.clone();
 
     // PartialEq::eq
-    assert!(a == cloned);
+    assert_eq!(a, cloned);
 
     // Index::index
     let _first: &MinHash<u64, PERMUTATIONS> = &a[0];

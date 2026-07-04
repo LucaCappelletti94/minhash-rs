@@ -404,3 +404,34 @@ where
         cloned.inner
     }
 }
+
+#[cfg(test)]
+mod private_tests {
+    // Private-method tests. Integration tests cannot reach `tail_bytes` /
+    // `tail_bytes_mut` directly, so any bounds mutation on those helpers
+    // survives unless a same-module unit test pins the slice length.
+
+    use super::SparseValues;
+
+    #[test]
+    fn tail_bytes_length_matches_capacity() {
+        const P: usize = 128;
+        let sv = SparseValues::<P>::new();
+        assert_eq!(
+            sv.tail_bytes().len(),
+            8 * (P - 1),
+            "tail_bytes exposes exactly (PERMUTATIONS - 1) words as bytes"
+        );
+    }
+
+    #[test]
+    fn tail_bytes_mut_length_matches_capacity() {
+        const P: usize = 128;
+        let mut sv = SparseValues::<P>::new();
+        assert_eq!(
+            sv.tail_bytes_mut().len(),
+            8 * (P - 1),
+            "tail_bytes_mut exposes exactly (PERMUTATIONS - 1) words as bytes"
+        );
+    }
+}

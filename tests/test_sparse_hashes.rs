@@ -86,3 +86,45 @@ fn minhasher_trait_impl_agrees_with_inherent() {
         assert!(dense.may_contain(v));
     }
 }
+
+#[test]
+fn minhasher_trait_may_contain_rejects_absent_values() {
+    // Defends the `may_contain -> true` mutant on the trait impl: a value
+    // never inserted must not be reported present.
+    let mut sparse = SparseHashes::<u64, 128>::new();
+    for v in 0u64..30 {
+        <SparseHashes<u64, 128> as MinHasher<128, u64>>::insert(&mut sparse, v);
+    }
+    for v in 200u64..230 {
+        assert!(
+            !<SparseHashes<u64, 128> as MinHasher<128, u64>>::may_contain(&sparse, v),
+            "value {v} was never inserted, may_contain must return false"
+        );
+    }
+}
+
+#[test]
+fn minhasher_trait_densify_flips_mode() {
+    // Defends the `densify with ()` (no-op) mutant on the trait impl: after
+    // calling trait densify, the sketch must be in dense mode.
+    let mut sparse = SparseHashes::<u64, 128>::new();
+    for v in 0u64..30 {
+        sparse.insert(v);
+    }
+    assert!(sparse.is_sparse());
+    <SparseHashes<u64, 128> as MinHasher<128, u64>>::densify(&mut sparse);
+    assert!(sparse.is_dense());
+    assert!(!sparse.is_sparse());
+}
+
+#[test]
+fn debug_output_is_nonempty_and_names_type() {
+    // Defends the `Debug::fmt -> Ok(Default::default())` mutant.
+    let sketch = SparseHashes::<u64, 128>::new();
+    let rendered = format!("{sketch:?}");
+    assert!(!rendered.is_empty());
+    assert!(
+        rendered.contains("SparseHashes"),
+        "Debug output should name the type, got {rendered:?}"
+    );
+}

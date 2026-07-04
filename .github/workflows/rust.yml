@@ -146,6 +146,15 @@ jobs:
         # - BandMatches::next += to *=: replacing an index step with a multiplication
         #   converts the iterator into an infinite loop that never advances, which
         #   the test harness detects as a timeout rather than a test failure.
+        # - SparseHashes::count -= to /=: `i /= 1` leaves `i` unchanged and turns
+        #   the reverse walk into an infinite loop.
+        # - SparseValues::tail_bytes_mut - to +: inflates the mutable slice by
+        #   16 bytes past the end of the underlying array; downstream codec
+        #   writes then walk off into memory that is not part of the sketch,
+        #   which manifests as a test timeout rather than a test failure.
+        # - SparseValues::count -> u32 with 1: stubbing the count to a constant
+        #   1 breaks the codec reader's termination condition and drives it
+        #   into an infinite scan of the tail bytes.
         run: >-
           cargo mutants --in-place --shard ${{ matrix.shard }}/4
           --exclude-re "replace == with != in iter_word_hashes"
@@ -160,6 +169,9 @@ jobs:
           --exclude-re "in.*band_hashes"
           --exclude-re "replace <impl Hasher for .*>::build .* with Default::default\(\)"
           --exclude-re "replace \+= with \*= in <impl Iterator for BandMatches"
+          --exclude-re "replace -= with /= in SparseHashes.*count"
+          --exclude-re "replace - with \+ in SparseValues.*tail_bytes_mut"
+          --exclude-re "replace SparseValues.*count -> u32 with 1"
       - name: Upload mutants report
         if: always()
         uses: actions/upload-artifact@v6

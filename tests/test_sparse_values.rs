@@ -315,7 +315,7 @@ fn minhasher_trait_impl_dispatches_to_inherent() {
         inherent_sv.insert(v);
     }
 
-    // may_contain via trait matches inherent
+    // may_contain via trait matches inherent for inserted values
     for &v in &values {
         assert_eq!(
             <SparseValues<128> as MinHasher<128, u64>>::may_contain(&trait_sv, v),
@@ -324,8 +324,21 @@ fn minhasher_trait_impl_dispatches_to_inherent() {
         );
     }
 
-    // densify via trait produces same dense state as inherent
+    // Defends `may_contain -> true` on the trait impl: never-inserted values
+    // must not be reported present.
+    for v in 10_000u64..10_030 {
+        assert!(
+            !<SparseValues<128> as MinHasher<128, u64>>::may_contain(&trait_sv, v),
+            "trait may_contain must reject never-inserted value {v}"
+        );
+    }
+
+    // Defends `densify with ()` on the trait impl: after the trait call the
+    // sketch must be in dense mode. If densify is a no-op the sketch stays
+    // sparse and this assertion fires.
+    assert!(trait_sv.is_sparse());
     <SparseValues<128> as MinHasher<128, u64>>::densify(&mut trait_sv);
+    assert!(trait_sv.is_dense());
     inherent_sv.densify();
     let trait_dense = <SparseValues<128> as MinHasher<128, u64>>::to_dense(&trait_sv);
     let inherent_dense = inherent_sv.into_minhash();

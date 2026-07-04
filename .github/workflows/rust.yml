@@ -102,6 +102,15 @@ jobs:
 
   mutants:
     runs-on: ubuntu-latest
+    strategy:
+      # Split the mutant list across parallel runners. A single shard used to run
+      # for so long that the GitHub runner cut it off with SIGTERM before it
+      # could finish; four shards keep each runner well under any implicit cap
+      # and give a much faster feedback loop besides.
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v5
@@ -114,7 +123,7 @@ jobs:
           rustup default nightly
       - name: Install cargo-mutants
         uses: taiki-e/install-action@cargo-mutants
-      - name: Run mutation testing
+      - name: Run mutation testing (shard ${{ matrix.shard }}/4)
         # Mutates the library one site at a time and reruns the tests. A
         # surviving mutant means some behaviour is never asserted, so the job
         # fails until a test catches it.
@@ -138,7 +147,7 @@ jobs:
         #   converts the iterator into an infinite loop that never advances, which
         #   the test harness detects as a timeout rather than a test failure.
         run: >-
-          cargo mutants --in-place
+          cargo mutants --in-place --shard ${{ matrix.shard }}/4
           --exclude-re "replace == with != in iter_word_hashes"
           --exclude-re "replace == with != in.*fetch_insert"
           --exclude-re "replace < with <= in.*insert_hash_stream"
@@ -155,7 +164,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: mutants-report
+          name: mutants-report-shard-${{ matrix.shard }}
           path: mutants.out
 
   coverage:

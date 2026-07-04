@@ -5,3 +5,6 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 68b7c834cf1f40af4191aa419ffe8b3096e85b1b4ab87e09ffaa131e662ba7e7 # shrinks to a = [], b = [0], c = []
+cc ffb182a24b4e967f374018088623dbf967131806202f66c7d9b0085c918eee09 # shrinks to v = [7690921558747475293]
+cc 75eb9062d52bf5029b2b50a9050278ac0e5a44494f8c33fa4116ed8b7a64d849 # shrinks to v = [13092855750901070369]
+cc 45a68b8cc3757e1ae86290e0cbb0d94f5d5a4f16aaf6debda37aa2409f6d17bb # shrinks to a = [], b = [2883773783929206970], c = []

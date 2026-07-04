@@ -55,7 +55,7 @@ assert_eq!(union_sketch, union.iter().collect());
 
 ### Sparse mode
 
-For small sets, sparse mode avoids computing all permutation hashes upfront and stores compact digests instead. Within capacity the Jaccard estimate is **exact** (limited only by hash collisions in the underlying SipHash or FNV digest, not by MinHash approximation). Once the sketch fills, it auto-densifies and behaves like a standard MinHash:
+For small sets, sparse mode stores the input digests directly in a sorted list instead of expanding each insert through the full k-permutation pipeline. Below capacity, Jaccard on two sparse sketches is quasi-exact on the underlying digest sets (bounded by a `1 / 2^N` collision probability from the hasher and from the encoding, negligible for `Hash = u64`). Once the digest list fills up, the sketch densifies in place.
 
 ```rust
 use minhash_rs::prelude::*;
@@ -65,7 +65,7 @@ let mut sketch = MinHash::<u64, 128>::sparse();
 sketch.insert(42);
 assert!(sketch.may_contain(42));
 
-// Sparse-vs-sparse Jaccard computes the true Jaccard index via sorted-list merge.
+// Sparse-vs-sparse Jaccard: sorted-list merge over the digest sets.
 let other: MinHash<u64, 128> =
     (0..100u64).fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
         mh.insert(i);
@@ -73,3 +73,7 @@ let other: MinHash<u64, 128> =
     });
 let jaccard = sketch.estimate_jaccard_index(&other);
 ```
+
+The densification step is state-equivalent, not merely estimator-equivalent. The densified sketch is bit-identical to what a from-scratch dense sketch built by inserting the same input set from the start would have produced. Two consequences fall out of that invariant. Sketches built dense from the start and sketches that were sparse and promoted are the same object once dense, so element-wise `min` unions and cross-mode equality Just Work. Banded LSH via `band_hashes::<BANDS>()` works unchanged after promotion, under the same minwise-independence assumptions that classical MinHash LSH already carries. This is what distinguishes the design from a bottom-k / KMV / theta sketch, which trades classical banded LSH for a permanent bottom-k representation.
+
+Two caveats worth surfacing. Sparse-mode Jaccard is exact on digest sets, not on original input elements, so ordinary hash collisions and the `saturating_add(1)` encoding collision at `Hash::MAX` still count. Densification is a deterministic latency spike on the specific insert that triggers overflow, paying `O(PERMUTATIONS * PERMUTATIONS)` on that record before every subsequent insert returns to the from-scratch dense cost of `O(PERMUTATIONS)`. Real-time streaming callers who need smooth tail latency should either pre-densify with `MinHash::new()` or budget the spike explicitly.

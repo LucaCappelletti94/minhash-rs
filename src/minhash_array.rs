@@ -5,27 +5,74 @@ use core::ops::{Index, IndexMut};
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 
-use crate::hasher::Hasher;
-use crate::prelude::*;
-use crate::primitive::ToU64;
+use crate::hasher::{Hasher, SipHashes13};
+use crate::hashtype::HashType;
+use crate::maximal::Maximal;
+use crate::minhash::MinHash;
+use crate::primitive::Primitive;
 
 /// An array of `N` independent [`MinHash`] sketches, each with `PERMUTATIONS`
-/// words.
+/// permutations. Handy when you want a small collection of MinHashes with
+/// identical parameters (for example, one per shard or per timestep) without
+/// spelling the type parameters at every element.
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "Word: Serialize", deserialize = "Word: Deserialize<'de>"))]
-pub struct MinHashArray<Word, const PERMUTATIONS: usize, const N: usize, H: Hasher = SipHashes13> {
+pub struct MinHashArray<
+    Word,
+    const PERMUTATIONS: usize,
+    const N: usize,
+    H: Hasher = SipHashes13,
+    Hash: HashType = u64,
+> where
+    Hash: Primitive<Word>,
+{
     #[serde(with = "BigArray")]
-    counters: [MinHash<Word, PERMUTATIONS, H>; N],
+    counters: [MinHash<Word, PERMUTATIONS, H, Hash>; N],
 }
+
 impl<
-        Word: Ord + XorShift + Copy + ToU64 + Maximal + PartialEq,
+        Word: core::fmt::Debug,
         const PERMUTATIONS: usize,
         const N: usize,
         H: Hasher,
-    > PartialEq for MinHashArray<Word, PERMUTATIONS, N, H>
+        Hash: HashType,
+    > core::fmt::Debug for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
 where
-    u64: Primitive<Word>,
+    Hash: Primitive<Word>,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("MinHashArray")
+            .field("counters", &self.counters)
+            .finish()
+    }
+}
+
+impl<Word: Clone, const PERMUTATIONS: usize, const N: usize, H: Hasher, Hash: HashType> Clone
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+where
+    Hash: Primitive<Word>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            counters: self.counters.clone(),
+        }
+    }
+}
+
+impl<Word: Copy, const PERMUTATIONS: usize, const N: usize, H: Hasher, Hash: HashType> Copy
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+where
+    Hash: Primitive<Word>,
+{
+}
+
+impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash> PartialEq
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+where
+    Word: Ord + Copy + Maximal + PartialEq + Primitive<Hash>,
+    H: Hasher,
+    Hash: HashType + Primitive<Word>,
 {
     fn eq(&self, other: &Self) -> bool {
         self.counters
@@ -35,29 +82,35 @@ where
     }
 }
 
-impl<
-        Word: Ord + XorShift + Copy + ToU64 + Maximal + PartialEq,
-        const PERMUTATIONS: usize,
-        const N: usize,
-        H: Hasher,
-    > Eq for MinHashArray<Word, PERMUTATIONS, N, H>
+impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash> Eq
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
 where
-    u64: Primitive<Word>,
+    Word: Ord + Copy + Maximal + PartialEq + Primitive<Hash>,
+    H: Hasher,
+    Hash: HashType + Primitive<Word>,
 {
 }
 
-impl<Word: Maximal, const PERMUTATIONS: usize, const N: usize, H: Hasher> Default
-    for MinHashArray<Word, PERMUTATIONS, N, H>
+impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash> Default
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+where
+    Word: Maximal,
+    H: Hasher,
+    Hash: HashType + Primitive<Word>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<Word: Maximal, const PERMUTATIONS: usize, const N: usize, H: Hasher>
-    MinHashArray<Word, PERMUTATIONS, N, H>
+impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash>
+    MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+where
+    Word: Maximal,
+    H: Hasher,
+    Hash: HashType + Primitive<Word>,
 {
-    /// Creates a new array of empty MinHash sketches.
+    /// Create an array of `N` empty MinHash sketches.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -66,19 +119,24 @@ impl<Word: Maximal, const PERMUTATIONS: usize, const N: usize, H: Hasher>
     }
 }
 
-/// We also provide indexing for the MinHashArray.
-impl<Word, const PERMUTATIONS: usize, const N: usize, H: Hasher> Index<usize>
-    for MinHashArray<Word, PERMUTATIONS, N, H>
+impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash> Index<usize>
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+where
+    H: Hasher,
+    Hash: HashType + Primitive<Word>,
 {
-    type Output = MinHash<Word, PERMUTATIONS, H>;
+    type Output = MinHash<Word, PERMUTATIONS, H, Hash>;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.counters[index]
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, const N: usize, H: Hasher> IndexMut<usize>
-    for MinHashArray<Word, PERMUTATIONS, N, H>
+impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash> IndexMut<usize>
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+where
+    H: Hasher,
+    Hash: HashType + Primitive<Word>,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.counters[index]

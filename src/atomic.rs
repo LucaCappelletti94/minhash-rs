@@ -1,222 +1,183 @@
-//! Hash generation and lock-free atomic insertion for MinHash sketches.
+//! Hash generation as an iterator, and lock-free atomic insertion.
+//!
+//! Two thin abstractions live in this module:
+//! - [`IterHashes`] exposes the per-permutation hash stream as an
+//!   [`Iterator`], useful for external consumers that want to plug MinHash's
+//!   hash pipeline into another storage layout.
+//! - [`AsAtomic`] reinterprets a MinHash's word storage as a slice of
+//!   atomics, and [`AtomicFetchInsert`] provides concurrent inserts on top.
 
-use core::hash::{Hash, Hasher};
+use core::hash::{Hash as CoreHash, Hasher as CoreHasher};
+use core::marker::PhantomData;
 use core::sync::atomic::Ordering;
 
-use fnv::FnvHasher;
-use siphasher::sip128::SipHasher13;
+use crate::hasher::Hasher;
+use crate::hashtype::HashType;
+use crate::minhash::MinHash;
+use crate::primitive::Primitive;
 
-use crate::hasher::Hasher as crate_hasher;
-use crate::prelude::{MinHash, Primitive, XorShift};
-use crate::splitmix::SplitMix;
-/// Generate `count` MinHash word hashes from `value` using the provided `hasher`.
+/// Iterator that emits `count` per-permutation hashes seeded by the raw
+/// digest of `value` under `hasher`.
 ///
-/// Used by the [`IterHashes`] trait for external consumers who need the
-/// hash stream as an iterator.
-///
-/// Zero is never emitted. XorShift has zero as a fixed point, so a hash that
-/// ever reaches zero would stay zero for the rest of the stream. In particular,
-/// when the seed truncates to zero (about one value in 256 for an 8-bit word)
-/// the whole stream would collapse to zero and saturate the sketch from a
-/// single insertion. Using `saturating_add(1)` keeps the stream non-degenerate
-/// for every word width and reserves zero as the sparse mode flag.
-fn iter_word_hashes<Word, H, HS>(
-    value: H,
-    mut hasher: HS,
-    count: usize,
-) -> impl Iterator<Item = Word>
+/// Zero is never emitted. XorShift has zero as a fixed point, so a stream
+/// that ever hits zero would stay there for the rest of the sketch. The
+/// guard on the `Hash` value keeps the SplitMix+XorShift stream lively, and
+/// a second guard on the truncated `Word` prevents the sparse mode flag
+/// (`words[0] == 0`) from being accidentally set by a dense stream whose low
+/// bits happen to be zero.
+struct HashStream<Word, Hash>
 where
-    Word: XorShift + Copy + PartialEq,
-    u64: Primitive<Word>,
-    H: Hash,
-    HS: Hasher,
+    Word: Copy + PartialEq,
+    Hash: HashType + Primitive<Word>,
 {
-    let zero: Word = 0u64.convert();
-    let one: Word = 1u64.convert();
-
-    // Calculate the hash.
-    value.hash(&mut hasher);
-    let mut hash: Word = hasher.finish().splitmix().splitmix().convert();
-    if hash == zero {
-        hash = one;
-    }
-
-    // Iterate over the words, never emitting the degenerate zero state. The
-    // native generators (u8/u16/u32/u64) are bijections on the non-zero space,
-    // so once the seed is non-zero they never produce zero; this in-loop guard
-    // therefore only fires for widths whose generator truncates a wider type
-    // (for example `usize` on a 32-bit target), keeping the stream safe there.
-    (0..count).map(move |_| {
-        hash = hash.xorshift();
-        if hash == zero {
-            hash = one;
-        }
-        hash
-    })
+    hash: Hash,
+    zero_word: Word,
+    one_word: Word,
+    remaining: usize,
+    _word: PhantomData<Word>,
 }
 
-/// An atomic integer that supports an atomic minimum-update.
+impl<Word, Hash> HashStream<Word, Hash>
+where
+    Word: Copy + PartialEq,
+    Hash: HashType + Primitive<Word>,
+{
+    #[inline]
+    fn new(digest: Hash, count: usize) -> Self {
+        let mut hash = digest.splitmix().splitmix();
+        if hash == Hash::ZERO {
+            hash = Hash::ONE;
+        }
+        Self {
+            hash,
+            zero_word: Hash::ZERO.convert(),
+            one_word: Hash::ONE.convert(),
+            remaining: count,
+            _word: PhantomData,
+        }
+    }
+}
+
+impl<Word, Hash> Iterator for HashStream<Word, Hash>
+where
+    Word: Copy + PartialEq,
+    Hash: HashType + Primitive<Word>,
+{
+    type Item = Word;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            return None;
+        }
+        self.remaining -= 1;
+
+        self.hash = self.hash.xorshift();
+        if self.hash == Hash::ZERO {
+            self.hash = Hash::ONE;
+        }
+        let mut w: Word = self.hash.convert();
+        if w == self.zero_word {
+            w = self.one_word;
+        }
+        Some(w)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+/// An atomic integer that supports atomic minimum-update.
 pub trait AtomicFetchMin {
     /// The non-atomic word type stored in this atomic.
     type Word;
 
-    /// Set the minimum value atomically
-    ///
-    /// # Arguments
-    /// * `value` - The value to set.
-    /// * `ordering` - The ordering to use.
-    ///
+    /// Update the value to `min(current, value)` atomically, using `ordering`
+    /// for successful compare-exchange stores.
     fn set_min(&self, value: Self::Word, ordering: Ordering);
 }
 
-/// Generates the per-permutation hash streams a MinHash uses for a value.
+/// Exposes the per-permutation MinHash hash stream as an [`Iterator`].
+///
+/// Blanket-implemented for every [`MinHash`], parametrised by the same
+/// hasher and hash type. External callers get the iterator via
+/// [`MinHash::<...>::iter_hashes_from_value`] and its family of specialised
+/// entry points.
 pub trait IterHashes<Word, const PERMUTATIONS: usize>
 where
-    Word: XorShift + Copy + PartialEq,
-    u64: Primitive<Word>,
+    Word: Copy + PartialEq,
 {
-    /// Iterate on the hashes from the provided value and hasher.
-    ///
-    /// # Arguments
-    /// * `value` - The value to hash.
-    fn iter_hashes_from_value<H: Hash, HS: Hasher>(
-        value: H,
-        hasher: HS,
-    ) -> impl Iterator<Item = Word> {
-        iter_word_hashes(value, hasher, PERMUTATIONS)
+    /// The hash width for the emitted stream.
+    type HashType: HashType + Primitive<Word>;
+
+    /// Iterate hashes for `value` using `hasher`.
+    fn iter_hashes_from_value<V, HS>(value: V, mut hasher: HS) -> impl Iterator<Item = Word>
+    where
+        V: CoreHash,
+        HS: CoreHasher,
+    {
+        value.hash(&mut hasher);
+        let digest = Self::HashType::from_u64_digest(hasher.finish());
+        HashStream::<Word, Self::HashType>::new(digest, PERMUTATIONS)
     }
 
-    /// Iterate on the SipHasher13 hashes from the provided value.
-    ///
-    /// # Arguments
-    /// * `value` - The value to hash.
-    ///
-    /// # Examples
+    /// Iterate hashes for `value` using the SipHash-1-3 default keys.
     ///
     /// ```rust
     /// use minhash_rs::prelude::*;
     ///
     /// let mut minhash = MinHash::<u64, 128>::new();
-    ///
     /// assert!(!minhash.may_contain(42));
     /// minhash.insert(42);
     /// assert!(minhash.may_contain(42));
-    /// minhash.insert(47);
-    /// assert!(minhash.may_contain(47));
     /// ```
-    ///
-    fn iter_siphashes13_from_value<H: Hash>(value: H) -> impl Iterator<Item = Word> {
-        Self::iter_hashes_from_value(value, SipHasher13::new())
+    fn iter_siphashes13_from_value<V: CoreHash>(value: V) -> impl Iterator<Item = Word> {
+        Self::iter_hashes_from_value(value, siphasher::sip128::SipHasher13::new())
     }
 
-    /// Iterate on the keyed SipHasher13 hashes from the provided value.
-    ///
-    /// # Arguments
-    /// * `value` - The value to hash.
-    /// * `key0` - The first key.
-    /// * `key1` - The second key.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use minhash_rs::prelude::*;
-    ///
-    /// let mut minhash = MinHash::<u64, 128, SipHashes13Keyed>::new_with_keys(
-    ///     0x0123456789ABCDEF,
-    ///     0xFEDCBA9876543210,
-    /// );
-    ///
-    /// assert!(!minhash.may_contain(42));
-    /// minhash.insert(42);
-    /// assert!(minhash.may_contain(42));
-    /// minhash.insert(47);
-    /// assert!(minhash.may_contain(47));
-    /// ```
-    ///
-    fn iter_keyed_siphashes13_from_value<H: Hash>(
-        value: H,
-        key0: u64,
-        key1: u64,
-    ) -> impl Iterator<Item = Word> {
-        Self::iter_hashes_from_value(value, SipHasher13::new_with_keys(key0, key1))
-    }
-
-    /// Iterate on the FNV hashes from the provided value.
-    ///
-    /// # Arguments
-    /// * `value` - The value to hash.
-    ///
-    /// # Examples
+    /// Iterate hashes for `value` using FNV-1a with the default seed.
     ///
     /// ```rust
     /// use minhash_rs::prelude::*;
     ///
     /// let mut minhash = MinHash::<u64, 128, Fnv>::new();
-    ///
     /// assert!(!minhash.may_contain(42));
     /// minhash.insert(42);
     /// assert!(minhash.may_contain(42));
-    /// minhash.insert(47);
-    /// assert!(minhash.may_contain(47));
     /// ```
-    ///
-    fn iter_fnv_from_value<H: Hash>(value: H) -> impl Iterator<Item = Word> {
-        Self::iter_hashes_from_value(value, FnvHasher::default())
-    }
-
-    /// Iterate on the keyed FNV hashes from the provided value.
-    ///
-    /// # Arguments
-    /// * `value` - The value to hash.
-    /// * `key` - The key.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use minhash_rs::prelude::*;
-    ///
-    /// let mut minhash = MinHash::<u64, 128, FnvKeyed>::new_with_keys(
-    ///     0x0123456789ABCDEF,
-    ///     0,
-    /// );
-    ///
-    /// assert!(!minhash.may_contain(42));
-    /// minhash.insert(42);
-    /// assert!(minhash.may_contain(42));
-    /// minhash.insert(47);
-    /// assert!(minhash.may_contain(47));
-    /// ```
-    fn iter_keyed_fnv_from_value<H: Hash>(value: H, key: u64) -> impl Iterator<Item = Word> {
-        Self::iter_hashes_from_value(value, FnvHasher::with_key(key))
+    fn iter_fnv_from_value<V: CoreHash>(value: V) -> impl Iterator<Item = Word> {
+        Self::iter_hashes_from_value(value, fnv::FnvHasher::default())
     }
 }
 
-impl<Word: XorShift + Copy + PartialEq, const PERMUTATIONS: usize, H: crate_hasher>
-    IterHashes<Word, PERMUTATIONS> for MinHash<Word, PERMUTATIONS, H>
+impl<Word, const PERMUTATIONS: usize, H, Hash> IterHashes<Word, PERMUTATIONS>
+    for MinHash<Word, PERMUTATIONS, H, Hash>
 where
-    u64: Primitive<Word>,
+    Word: Copy + PartialEq,
+    H: Hasher,
+    Hash: HashType + Primitive<Word>,
 {
+    type HashType = Hash;
 }
 
-/// Reinterpret the words of a [`MinHash`] as a slice of atomics.
+/// Reinterpret a MinHash's word storage as a shareable slice of atomics.
 ///
-/// If the sketch is in sparse mode, it is densified first to ensure the atomic
-/// view operates on a valid MinHash signature. The hasher used for atomic
-/// insertion via [`AtomicFetchInsert`] must match the hasher configured on
-/// the [`MinHash`] sketch to produce correct results.
+/// If the sketch is in sparse mode it is densified first, so the atomic view
+/// always operates on a valid MinHash signature.
 ///
 /// # Soundness
-/// The atomic view is derived from an exclusive `&mut self` borrow, which gives
-/// the resulting reference read-write provenance (this is the crucial
+/// The atomic view is derived from an exclusive `&mut self` borrow, which
+/// gives the resulting reference read-write provenance (this is the crucial
 /// difference from reinterpreting a shared `&[Word]`, which only grants
-/// read-only provenance and is undefined behavior to write through). The
-/// returned `&[AtomicWord]` can then be shared across threads (it is `Sync`) so
-/// that values can be inserted concurrently with [`AtomicFetchInsert`]. The
-/// exclusive borrow is held for the lifetime of the returned slice, so no
-/// non-atomic access to the same words can race with the atomic inserts.
+/// read-only provenance and is UB to write through). The returned
+/// `&[AtomicWord]` is `Sync` and can therefore be shared across threads
+/// while the exclusive borrow holds. See Rust issue #76314 for the parallel
+/// pattern used by unstable `Atomic*::from_mut_slice`.
 ///
-/// This mirrors what the (still unstable) `Atomic*::from_mut_slice` helpers do
-/// internally; see Rust issue #76314.
+/// The hasher used for concurrent atomic inserts on the returned slice must
+/// match the phantom [`Hasher`] on the sketch and the [`HashType`] chosen
+/// for its stream. Using a mismatched hasher or hash width produces
+/// meaningless membership results and Jaccard estimates.
 pub trait AsAtomic {
     /// The atomic word type backing this MinHash.
     type AtomicWord: AtomicFetchMin;
@@ -225,15 +186,11 @@ pub trait AsAtomic {
     fn as_atomic(&mut self) -> &[Self::AtomicWord];
 }
 
-// Emit the atomic implementations for one word width, gated on the target
-// actually having an atomic of that width. Targets without (for example) 64-bit
-// atomics simply do not get the `u64` atomic API, while the rest of the crate
-// (and narrower atomics) keeps working. The atomic type is referenced through
-// its full path so the gated-out widths are never even named.
-//
-// The `$sparse:ident` parameter controls whether sparse-mode densification is
-// checked: `check` for u64/usize (which support sparse mode), `skip` for narrow
-// types (which cannot be sparse since their MAX < 256).
+// Emit atomic implementations for one word width, gated on the target
+// actually having an atomic of that width. Targets without (say) 64-bit
+// atomics simply do not get the u64 atomic API, while narrower widths keep
+// working. The `$sparse` parameter is either `check` (u64/usize can be
+// sparse, densify first) or `skip` (narrow words are never sparse).
 macro_rules! atomic_impls {
     ($word:ty, $atomic:ident, $has:literal, check) => {
         #[cfg(target_has_atomic = $has)]
@@ -252,8 +209,11 @@ macro_rules! atomic_impls {
         }
 
         #[cfg(target_has_atomic = $has)]
-        impl<const PERMUTATIONS: usize, H: crate_hasher> AsAtomic
-            for MinHash<$word, PERMUTATIONS, H>
+        impl<const PERMUTATIONS: usize, H, Hash> AsAtomic for MinHash<$word, PERMUTATIONS, H, Hash>
+        where
+            H: Hasher,
+            Hash: HashType + Primitive<$word>,
+            $word: Primitive<Hash>,
         {
             type AtomicWord = core::sync::atomic::$atomic;
 
@@ -262,12 +222,11 @@ macro_rules! atomic_impls {
                     self.densify();
                 }
                 let words: &mut [$word] = self.as_mut();
-                // SAFETY: the atomic has the same size and alignment as `$word`,
-                // so the slice layout (data pointer and length) is identical.
-                // The atomic view is derived from a unique `&mut` borrow, so it
-                // carries read-write provenance, and that exclusive borrow is
-                // held for the lifetime of the returned slice, ruling out
-                // concurrent non-atomic access to the same memory.
+                // SAFETY: the atomic has identical size and alignment to
+                // `$word`, so the slice layout (data pointer and length) is
+                // preserved. The atomic view is derived from a unique `&mut`
+                // borrow that is held for the returned slice's lifetime,
+                // ruling out concurrent non-atomic access.
                 unsafe {
                     core::mem::transmute::<&mut [$word], &[core::sync::atomic::$atomic]>(words)
                 }
@@ -292,20 +251,19 @@ macro_rules! atomic_impls {
         }
 
         #[cfg(target_has_atomic = $has)]
-        impl<const PERMUTATIONS: usize, H: crate_hasher> AsAtomic
-            for MinHash<$word, PERMUTATIONS, H>
+        impl<const PERMUTATIONS: usize, H, Hash> AsAtomic for MinHash<$word, PERMUTATIONS, H, Hash>
+        where
+            H: Hasher,
+            Hash: HashType + Primitive<$word>,
         {
             type AtomicWord = core::sync::atomic::$atomic;
 
             fn as_atomic(&mut self) -> &[core::sync::atomic::$atomic] {
-                // Narrow word types cannot be sparse (MAX < 256), so no check needed.
+                // Narrow word types cannot be sparse (no `SparseFor` impl
+                // for them), so no densification check needed.
                 let words: &mut [$word] = self.as_mut();
-                // SAFETY: the atomic has the same size and alignment as `$word`,
-                // so the slice layout (data pointer and length) is identical.
-                // The atomic view is derived from a unique `&mut` borrow, so it
-                // carries read-write provenance, and that exclusive borrow is
-                // held for the lifetime of the returned slice, ruling out
-                // concurrent non-atomic access to the same memory.
+                // SAFETY: identical size and alignment; exclusive `&mut`
+                // borrow is held for the returned slice's lifetime.
                 unsafe {
                     core::mem::transmute::<&mut [$word], &[core::sync::atomic::$atomic]>(words)
                 }
@@ -322,145 +280,86 @@ atomic_impls!(usize, AtomicUsize, "ptr", check);
 
 /// Concurrent insertion into a slice of atomic MinHash words.
 ///
-/// Obtain the slice from [`AsAtomic::as_atomic`], then share it across threads
-/// and call these methods. Membership and Jaccard estimation are performed on
-/// the original [`MinHash`] once the atomic borrow has been released.
+/// Obtain the slice via [`AsAtomic::as_atomic`], then share it across
+/// threads and call one of the specialised inserts. Membership and Jaccard
+/// on the original [`MinHash`] happen after the atomic borrow is released.
 ///
-/// The hasher used for atomic insertion must match the hasher configured on
-/// the [`MinHash`] sketch. For example, [`fetch_insert_with_siphashes13`]
-/// pairs with a sketch using the default `SipHashes13` hasher, while
-/// [`fetch_insert_with_fnv`] requires an `Fnv` hasher. Using a mismatched
-/// hasher produces meaningless membership results and Jaccard estimates.
+/// The hasher and hash-width used for concurrent inserts must match the
+/// phantom [`Hasher`] and [`HashType`] on the sketch. Passing a mismatched
+/// pair produces meaningless membership results and Jaccard estimates. The
+/// type parameters on each method make the pairing explicit at the call
+/// site.
 ///
 /// # Examples
 ///
 /// ```
-/// use minhash_rs::prelude::*;
 /// use core::sync::atomic::Ordering;
+/// use minhash_rs::prelude::*;
 ///
 /// let mut minhash = MinHash::<u64, 4>::new();
 /// {
 ///     let atomic = minhash.as_atomic();
-///     atomic.fetch_insert_with_siphashes13(42, Ordering::Relaxed);
-///     atomic.fetch_insert_with_siphashes13(47, Ordering::Relaxed);
+///     atomic.fetch_insert_with_siphashes13::<_, u64>(42u64, Ordering::Relaxed);
+///     atomic.fetch_insert_with_siphashes13::<_, u64>(47u64, Ordering::Relaxed);
 /// }
 /// assert!(!minhash.is_empty());
-/// assert!(minhash.may_contain(42));
-/// assert!(minhash.may_contain(47));
+/// assert!(minhash.may_contain(42u64));
+/// assert!(minhash.may_contain(47u64));
 /// ```
 pub trait AtomicFetchInsert {
-    /// The (non-atomic) word type stored in each atomic.
+    /// The word type stored in these atomics.
     type Word;
 
-    /// Insert a value atomically using the SipHasher13.
-    fn fetch_insert_with_siphashes13<H: Hash>(&self, value: H, ordering: Ordering);
+    /// Insert atomically using SipHash-1-3 with default keys as the raw
+    /// hasher and `Hash` as the internal hash stream width.
+    fn fetch_insert_with_siphashes13<V, Hash>(&self, value: V, ordering: Ordering)
+    where
+        V: CoreHash,
+        Hash: HashType + Primitive<Self::Word>;
 
-    /// Insert a value atomically using the keyed SipHasher13.
-    fn fetch_insert_with_keyed_siphashes13<H: Hash>(
-        &self,
-        value: H,
-        key0: u64,
-        key1: u64,
-        ordering: Ordering,
-    );
-
-    /// Insert a value atomically using the FNV hash.
-    fn fetch_insert_with_fnv<H: Hash>(&self, value: H, ordering: Ordering);
-
-    /// Insert a value atomically using the keyed FNV hash.
-    fn fetch_insert_with_keyed_fnv<H: Hash>(&self, value: H, key: u64, ordering: Ordering);
+    /// Insert atomically using FNV-1a with the default seed as the raw
+    /// hasher and `Hash` as the internal hash stream width.
+    fn fetch_insert_with_fnv<V, Hash>(&self, value: V, ordering: Ordering)
+    where
+        V: CoreHash,
+        Hash: HashType + Primitive<Self::Word>;
 }
 
 impl<A> AtomicFetchInsert for [A]
 where
     A: AtomicFetchMin,
-    A::Word: XorShift + Copy + PartialEq,
-    u64: Primitive<A::Word>,
+    A::Word: Copy + PartialEq,
 {
     type Word = A::Word;
 
-    fn fetch_insert_with_siphashes13<H: Hash>(&self, value: H, ordering: Ordering) {
-        let zero: A::Word = 0u64.convert();
-        let one: A::Word = 1u64.convert();
-
-        let mut hasher = SipHasher13::new();
+    fn fetch_insert_with_siphashes13<V, Hash>(&self, value: V, ordering: Ordering)
+    where
+        V: CoreHash,
+        Hash: HashType + Primitive<Self::Word>,
+    {
+        let mut hasher = siphasher::sip128::SipHasher13::new();
         value.hash(&mut hasher);
-        let mut hash: A::Word = hasher.finish().splitmix().splitmix().convert();
-        if hash == zero {
-            hash = one;
-        }
-
-        for word in self {
-            hash = hash.xorshift();
-            if hash == zero {
-                hash = one;
-            }
+        let digest = Hash::from_u64_digest(hasher.finish());
+        for (word, hash) in self
+            .iter()
+            .zip(HashStream::<A::Word, Hash>::new(digest, self.len()))
+        {
             word.set_min(hash, ordering);
         }
     }
 
-    fn fetch_insert_with_keyed_siphashes13<H: Hash>(
-        &self,
-        value: H,
-        key0: u64,
-        key1: u64,
-        ordering: Ordering,
-    ) {
-        let zero: A::Word = 0u64.convert();
-        let one: A::Word = 1u64.convert();
-
-        let mut hasher = SipHasher13::new_with_keys(key0, key1);
+    fn fetch_insert_with_fnv<V, Hash>(&self, value: V, ordering: Ordering)
+    where
+        V: CoreHash,
+        Hash: HashType + Primitive<Self::Word>,
+    {
+        let mut hasher = fnv::FnvHasher::default();
         value.hash(&mut hasher);
-        let mut hash: A::Word = hasher.finish().splitmix().splitmix().convert();
-        if hash == zero {
-            hash = one;
-        }
-
-        for word in self {
-            hash = hash.xorshift();
-            if hash == zero {
-                hash = one;
-            }
-            word.set_min(hash, ordering);
-        }
-    }
-
-    fn fetch_insert_with_fnv<H: Hash>(&self, value: H, ordering: Ordering) {
-        let zero: A::Word = 0u64.convert();
-        let one: A::Word = 1u64.convert();
-
-        let mut hasher = FnvHasher::default();
-        value.hash(&mut hasher);
-        let mut hash: A::Word = hasher.finish().splitmix().splitmix().convert();
-        if hash == zero {
-            hash = one;
-        }
-
-        for word in self {
-            hash = hash.xorshift();
-            if hash == zero {
-                hash = one;
-            }
-            word.set_min(hash, ordering);
-        }
-    }
-
-    fn fetch_insert_with_keyed_fnv<H: Hash>(&self, value: H, key: u64, ordering: Ordering) {
-        let zero: A::Word = 0u64.convert();
-        let one: A::Word = 1u64.convert();
-
-        let mut hasher = FnvHasher::with_key(key);
-        value.hash(&mut hasher);
-        let mut hash: A::Word = hasher.finish().splitmix().splitmix().convert();
-        if hash == zero {
-            hash = one;
-        }
-
-        for word in self {
-            hash = hash.xorshift();
-            if hash == zero {
-                hash = one;
-            }
+        let digest = Hash::from_u64_digest(hasher.finish());
+        for (word, hash) in self
+            .iter()
+            .zip(HashStream::<A::Word, Hash>::new(digest, self.len()))
+        {
             word.set_min(hash, ordering);
         }
     }

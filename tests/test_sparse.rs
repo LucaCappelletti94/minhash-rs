@@ -25,26 +25,16 @@ fn sparse_len_empty() {
 }
 
 #[test]
-fn to_u64_conversions() {
-    use minhash_rs::primitive::ToU64;
-    assert_eq!(42u64.to_u64(), 42u64);
-    assert_eq!(42usize.to_u64(), 42u64);
-    assert_eq!(42u8.to_u64(), 42u64);
-    assert_eq!(42u16.to_u64(), 42u64);
-    assert_eq!(42u32.to_u64(), 42u64);
-}
-
-#[test]
-fn sparse_from_digest() {
-    use minhash_rs::primitive::SparseWord;
-    assert_eq!(
-        <u64 as SparseWord>::from_digest(0xDEAD_BEEF_CAFE_BABE),
-        0xDEAD_BEEF_CAFE_BABE
-    );
-    assert_eq!(
-        <usize as SparseWord>::from_digest(0xDEAD_BEEF_CAFE_BABE),
-        0xDEAD_BEEF_CAFE_BABE_usize
-    );
+fn primitive_word_to_u64_conversions() {
+    // These conversions are what the sparse decoding path relies on when
+    // the internal Hash width is u64: a Word must widen (or identity-cast)
+    // back to the u64 Hash. The impls are provided by `Primitive`.
+    use minhash_rs::primitive::Primitive;
+    assert_eq!(<u64 as Primitive<u64>>::convert(42u64), 42u64);
+    assert_eq!(<usize as Primitive<u64>>::convert(42usize), 42u64);
+    assert_eq!(<u8 as Primitive<u64>>::convert(42u8), 42u64);
+    assert_eq!(<u16 as Primitive<u64>>::convert(42u16), 42u64);
+    assert_eq!(<u32 as Primitive<u64>>::convert(42u32), 42u64);
 }
 
 #[test]
@@ -124,16 +114,6 @@ fn sparse_no_false_negatives_siphash() {
 #[test]
 fn sparse_no_false_negatives_fnv() {
     let mut mh = MinHash::<u64, 128, Fnv>::sparse();
-    for i in 0..1000_u64 {
-        mh.insert(i);
-        assert!(mh.may_contain(i), "false negative for {i}");
-    }
-}
-
-#[test]
-fn sparse_no_false_negatives_keyed() {
-    let (key0, key1) = (0xA5A5_A5A5_A5A5_A5A5, 0x5A5A_5A5A_5A5A_5A5A);
-    let mut mh = MinHash::<u64, 128, SipHashes13Keyed>::sparse_with_keys(key0, key1);
     for i in 0..1000_u64 {
         mh.insert(i);
         assert!(mh.may_contain(i), "false negative for {i}");
@@ -422,18 +402,6 @@ fn sparse_serde_preserves_mode() {
     assert_eq!(decoded.as_ref()[0], 0);
 }
 
-// ─── Keyed FNV ──────────────────────────────────────────────────────────────
-
-#[test]
-fn sparse_no_false_negatives_keyed_fnv() {
-    let key = 0x0123_4567_89AB_CDEF;
-    let mut mh = MinHash::<u64, 128, FnvKeyed>::sparse_with_keys(key, 0);
-    for i in 0..1000_u64 {
-        mh.insert(i);
-        assert!(mh.may_contain(i), "false negative for {i}");
-    }
-}
-
 // ─── is_full ────────────────────────────────────────────────────────────────
 
 #[test]
@@ -709,4 +677,128 @@ proptest! {
     fn sparse_serde_roundtrip_prop(v in values()) {
         prop_sparse_serde_roundtrip(&v);
     }
+}
+
+// ─── u32 hash + u32 word sparse mode ────────────────────────────────────────
+//
+// The u32/u32 sparse configuration is the marquee feature unlocked by the
+// 0.5.0 `Hash` phantom parameter. These tests mirror the u64/u64 coverage so
+// the `SparseFor<u32> for u32` impl, the `u32: Primitive<u32>` round-trip,
+// and the SplitMix32 / XorShift32 stream are exercised end-to-end.
+
+#[test]
+fn sparse_u32_no_false_negatives_siphash() {
+    let mut mh = MinHash::<u32, 128, SipHashes13, u32>::sparse();
+    for i in 0..1000_u64 {
+        mh.insert(i);
+        assert!(mh.may_contain(i), "u32/u32 sparse false negative for {i}");
+    }
+}
+
+#[test]
+fn sparse_u32_no_false_negatives_fnv() {
+    let mut mh = MinHash::<u32, 128, Fnv, u32>::sparse();
+    for i in 0..1000_u64 {
+        mh.insert(i);
+        assert!(mh.may_contain(i), "u32/u32 sparse false negative for {i}");
+    }
+}
+
+#[test]
+fn sparse_u32_deduplicates() {
+    let mut mh = MinHash::<u32, 128, SipHashes13, u32>::sparse();
+    for _ in 0..100 {
+        mh.insert(42u64);
+    }
+    let mut dense_single = MinHash::<u32, 128, SipHashes13, u32>::new();
+    dense_single.insert(42u64);
+    assert_eq!(mh, dense_single);
+}
+
+#[test]
+fn sparse_u32_eq_dense_cross_mode() {
+    let values: Vec<u64> = (0..50).collect();
+    let mut sparse = MinHash::<u32, 128, SipHashes13, u32>::sparse();
+    let mut dense = MinHash::<u32, 128, SipHashes13, u32>::new();
+    for &v in &values {
+        sparse.insert(v);
+        dense.insert(v);
+    }
+    assert_eq!(sparse, dense);
+    assert_eq!(dense, sparse);
+}
+
+#[test]
+fn sparse_u32_densifies_on_overflow() {
+    let mut mh = MinHash::<u32, 128, SipHashes13, u32>::sparse();
+    for i in 0..200_u64 {
+        mh.insert(i);
+    }
+    let mut dense = MinHash::<u32, 128, SipHashes13, u32>::new();
+    for i in 0..200_u64 {
+        dense.insert(i);
+    }
+    assert_eq!(mh, dense);
+}
+
+#[test]
+fn sparse_u32_serde_roundtrip() {
+    let mut mh = MinHash::<u32, 128, SipHashes13, u32>::sparse();
+    for i in 0..80_u64 {
+        mh.insert(i);
+    }
+    let json = serde_json::to_string(&mh).expect("serialization failed");
+    let decoded: MinHash<u32, 128, SipHashes13, u32> =
+        serde_json::from_str(&json).expect("deserialization failed");
+    assert_eq!(mh, decoded);
+    for i in 0..80_u64 {
+        assert!(decoded.may_contain(i));
+    }
+}
+
+#[test]
+fn sparse_u32_exact_jaccard() {
+    let mut a = MinHash::<u32, 128, SipHashes13, u32>::sparse();
+    let mut b = MinHash::<u32, 128, SipHashes13, u32>::sparse();
+    for i in 0..32u64 {
+        a.insert(i);
+    }
+    for i in 16..48u64 {
+        b.insert(i);
+    }
+    // 16 shared values, 48 in the union -> Jaccard = 16/48 = 1/3.
+    let est = a.estimate_jaccard_index(&b);
+    assert!(
+        (est - (16.0f64 / 48.0)).abs() < 1e-9,
+        "expected exact 1/3, got {est}"
+    );
+}
+
+#[test]
+fn sparse_u32_memory_is_half_of_u64() {
+    let a = MinHash::<u32, 128, SipHashes13, u32>::sparse();
+    let b = MinHash::<u64, 128>::sparse();
+    assert_eq!(a.memory() * 2, b.memory());
+}
+
+// ─── Regression: `digest == Hash::MAX` must not collide with the sentinel ───
+//
+// Encoding as `wrapping_add(1)` would map `digest == MAX` to `0`, colliding
+// with the sparse mode flag and silently dropping the insert plus everything
+// later in sort order. Encoding as `saturating_add(1)` maps both `MAX` and
+// `MAX-1` to `MAX`, a benign 1-in-2^N false positive. This test asserts the
+// arithmetic used by the encoder.
+
+#[test]
+fn sparse_arithmetic_saturates_at_max() {
+    use minhash_rs::hashtype::SparseArithmetic;
+    assert_eq!(u64::MAX.saturating_add(1u64), u64::MAX);
+    assert_eq!(u32::MAX.saturating_add(1u32), u32::MAX);
+    assert_eq!(1u64.saturating_sub(1u64), 0u64);
+    assert_eq!(0u32.saturating_sub(1u32), 0u32);
+
+    // The encoded value the sparse machinery would store for `digest == MAX`
+    // must never equal zero; otherwise it would look like the sentinel.
+    assert_ne!(<u64 as SparseArithmetic>::saturating_add(u64::MAX, 1), 0);
+    assert_ne!(<u32 as SparseArithmetic>::saturating_add(u32::MAX, 1), 0);
 }

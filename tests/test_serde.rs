@@ -1,16 +1,14 @@
 //! Serde round-trip tests for MinHash and MinHashArray.
 
 use minhash_rs::prelude::*;
-use minhash_rs::primitive::ToU64;
 
 fn roundtrip_minhash<Word, const PERMUTATIONS: usize>(values: &[u64])
 where
-    Word: XorShift
-        + Copy
+    Word: Copy
         + Ord
         + Eq
         + Maximal
-        + ToU64
+        + Primitive<u64>
         + core::hash::Hash
         + core::fmt::Debug
         + serde::Serialize

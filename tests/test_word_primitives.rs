@@ -1,8 +1,10 @@
-//! Exact-value tests for the per-word `XorShift` and `Primitive` impls.
+//! Exact-value tests for the per-hash `XorShift` and the per-word `Primitive`
+//! impls.
 //!
-//! The sketch tests only assert statistical invariants, leaving the low-level
-//! word operations free to be subtly wrong unnoticed. These pin each impl
-//! against an independent reference. Golden values were computed from the
+//! MinHash iterates the permutation stream on the `HashType` (`u64` or `u32`),
+//! not on the `Word`, so the pinned XorShift golden values live here for the
+//! two hash widths only. Word-side conversion has its own pinned values
+//! below.
 
 use minhash_rs::prelude::*;
 
@@ -13,17 +15,6 @@ fn xorshift_produces_exact_sequence_values() {
 
     assert_eq!(1_u32.xorshift(), 270_369);
     assert_eq!(12_345_u32.xorshift(), 3_336_926_330);
-
-    assert_eq!(1_u16.xorshift(), 8_225);
-    assert_eq!(12_345_u16.xorshift(), 29_818);
-
-    assert_eq!(1_u8.xorshift(), 27);
-    // 17 is odd and sets bit 7 before the `>> 7` step, distinguishing `^=`
-    // from `|=` there.
-    assert_eq!(17_u8.xorshift(), 168);
-
-    assert_eq!(1_usize.xorshift(), 1_082_269_761);
-    assert_eq!(12_345_usize.xorshift(), 13_289_605_635_609);
 }
 
 #[test]
@@ -50,19 +41,18 @@ fn primitive_convert_narrows_to_the_low_bits() {
 
 #[test]
 fn zero_is_never_emitted_by_the_hash_stream() {
-    // u8 xorshift can produce zero from nonzero input (e.g. 128 -> 0).
-    // The hash stream must remap zero to one so the sketch stays non-degenerate.
+    // The dense hash stream lives on the `Hash` type (u64 by default) and is
+    // guarded against zero both there and after the truncation to `Word`.
+    // Without the post-truncation guard, an insertion whose truncated word
+    // happens to be zero would park `words[0] == 0`, which is the sparse
+    // mode flag and would then mislead `is_sparse`.
     let mut mh = MinHash::<u8, 16, Fnv>::new();
-    // Insert enough values to trigger zero in the xorshift stream.
-    // 128_u8.xorshift() == 0, so any seed that derives to 128 will hit zero.
     for i in 0..=255u8 {
         mh.insert(u64::from(i));
     }
-    // No word should be zero (zero is remapped to one).
     for &word in mh.as_ref() {
         assert_ne!(word, 0, "zero leaked into MinHash words");
     }
-    // The sketch should not be empty (inserts produced valid hashes).
     assert!(!mh.is_empty());
 }
 

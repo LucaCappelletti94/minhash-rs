@@ -38,26 +38,15 @@ fn band_count_matches_const() {
 
     assert_eq!(sketch.band_hashes::<16>().len(), 16);
     assert_eq!(sketch.band_hashes::<8>().len(), 8);
-    assert_eq!(sketch.band_hashes::<0>().len(), 0);
+    // BANDS = 0 used to return `[u64; 0]` silently; it is now rejected at
+    // compile time by the `AssertBandsDivide` const on `MinHash::band_hashes`,
+    // exercised as a compile_fail doctest in `src/lsh.rs`.
 }
 
-#[test]
-fn non_dividing_bands_use_floor_rows() {
-    let sketch: MinHash<u64, PERMUTATIONS> = (0..200u64).collect();
-    let registers = sketch.as_ref();
-
-    let bands = sketch.band_hashes::<5>();
-    let rows = PERMUTATIONS / 5;
-    assert_eq!(rows, 25);
-
-    for (band, &hash) in bands.iter().enumerate() {
-        assert_eq!(
-            hash,
-            band_hash(&registers[band * rows..(band + 1) * rows]),
-            "band {band} disagrees under non-dividing bands",
-        );
-    }
-}
+// Prior to 0.5.0 `band_hashes<5>()` (and any BANDS that did not divide
+// PERMUTATIONS = 128) silently used floor division and dropped the tail
+// registers. That behaviour is now rejected at compile time, so this test
+// has become the compile_fail doctest on `MinHash::band_hashes`.
 
 #[test]
 fn mutating_one_register_changes_only_its_band() {

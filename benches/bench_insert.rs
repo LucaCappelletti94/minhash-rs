@@ -29,43 +29,10 @@ fn bench_insert_families(c: &mut Criterion) {
         );
     });
 
-    // keyed_siphashes13
-    group.bench_function("cold/keyed_siphashes13", |b| {
-        b.iter_batched(
-            || {
-                MinHash::<u64, 128, SipHashes13Keyed>::new_with_keys(
-                    0x0123_4567_89AB_CDEF,
-                    0xFEDC_BA98_7654_3210,
-                )
-            },
-            |mut mh| {
-                for i in 0..ELEMENTS as u64 {
-                    mh.insert(i);
-                }
-                mh
-            },
-            BatchSize::PerIteration,
-        );
-    });
-
     // fnv
     group.bench_function("cold/fnv", |b| {
         b.iter_batched(
             MinHash::<u64, 128, Fnv>::new,
-            |mut mh| {
-                for i in 0..ELEMENTS as u64 {
-                    mh.insert(i);
-                }
-                mh
-            },
-            BatchSize::PerIteration,
-        );
-    });
-
-    // keyed_fnv
-    group.bench_function("cold/keyed_fnv", |b| {
-        b.iter_batched(
-            || MinHash::<u64, 128, FnvKeyed>::new_with_keys(0x0123_4567_89AB_CDEF, 0),
             |mut mh| {
                 for i in 0..ELEMENTS as u64 {
                     mh.insert(i);
@@ -254,7 +221,7 @@ fn bench_insert_atomic(c: &mut Criterion) {
             |mut mh| {
                 let atomic = mh.as_atomic();
                 for i in 0..ELEMENTS as u64 {
-                    atomic.fetch_insert_with_fnv(i, Ordering::Relaxed);
+                    atomic.fetch_insert_with_fnv::<u64, u64>(i, Ordering::Relaxed);
                 }
                 mh
             },

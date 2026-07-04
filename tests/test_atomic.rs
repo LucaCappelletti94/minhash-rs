@@ -17,26 +17,13 @@ fn atomic_insert_single_threaded_matches_membership() {
 
     {
         let atomic = minhash.as_atomic();
-        atomic.fetch_insert_with_siphashes13(42, Ordering::Relaxed);
-        atomic.fetch_insert_with_siphashes13(47, Ordering::Relaxed);
+        atomic.fetch_insert_with_siphashes13::<u64, u64>(42u64, Ordering::Relaxed);
+        atomic.fetch_insert_with_siphashes13::<u64, u64>(47u64, Ordering::Relaxed);
     }
 
     assert!(!minhash.is_empty());
-    assert!(minhash.may_contain(42));
-    assert!(minhash.may_contain(47));
-}
-
-#[test]
-fn atomic_insert_keyed_single_threaded_matches_membership() {
-    let key0 = 0x0123_4567_89AB_CDEF;
-    let key1 = 0xFEDC_BA98_7654_3210;
-
-    let mut minhash = MinHash::<u64, 8, SipHashes13Keyed>::new_with_keys(key0, key1);
-    {
-        let atomic = minhash.as_atomic();
-        atomic.fetch_insert_with_keyed_siphashes13(42, key0, key1, Ordering::Relaxed);
-    }
-    assert!(minhash.may_contain(42));
+    assert!(minhash.may_contain(42u64));
+    assert!(minhash.may_contain(47u64));
 }
 
 #[test]
@@ -46,7 +33,7 @@ fn atomic_insert_matches_non_atomic_insert() {
     let mut atomic_mh = MinHash::<u64, 16, SipHashes13>::new();
     {
         let atomic = atomic_mh.as_atomic();
-        atomic.fetch_insert_with_siphashes13(123_u64, Ordering::Relaxed);
+        atomic.fetch_insert_with_siphashes13::<u64, u64>(123_u64, Ordering::Relaxed);
     }
 
     let mut serial_mh = MinHash::<u64, 16, SipHashes13>::new();
@@ -66,7 +53,7 @@ fn atomic_insert_concurrent_inserts_all_values() {
         thread::scope(|scope| {
             for &value in &values {
                 scope.spawn(move || {
-                    atomic.fetch_insert_with_siphashes13(value, Ordering::Relaxed);
+                    atomic.fetch_insert_with_siphashes13::<u64, u64>(value, Ordering::Relaxed);
                 });
             }
         });

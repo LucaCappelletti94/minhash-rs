@@ -11,23 +11,7 @@ fn atomic_fnv_has_no_false_negatives() {
     {
         let atomic = mh.as_atomic();
         for v in 0..8u64 {
-            atomic.fetch_insert_with_fnv(v, Ordering::Relaxed);
-        }
-    }
-    for v in 0..8u64 {
-        assert!(mh.may_contain(v));
-    }
-}
-
-#[test]
-fn atomic_keyed_fnv_has_no_false_negatives() {
-    let key0 = 0xDEAD_BEEF;
-    let key1 = 0;
-    let mut mh = MinHash::<u64, 16, FnvKeyed>::new_with_keys(key0, key1);
-    {
-        let atomic = mh.as_atomic();
-        for v in 0..8u64 {
-            atomic.fetch_insert_with_keyed_fnv(v, key0, Ordering::Relaxed);
+            atomic.fetch_insert_with_fnv::<u64, u64>(v, Ordering::Relaxed);
         }
     }
     for v in 0..8u64 {
@@ -40,7 +24,7 @@ fn atomic_fnv_matches_non_atomic_fnv() {
     let mut atomic_mh = MinHash::<u64, 16, Fnv>::new();
     {
         let atomic = atomic_mh.as_atomic();
-        atomic.fetch_insert_with_fnv(123_u64, Ordering::Relaxed);
+        atomic.fetch_insert_with_fnv::<u64, u64>(123_u64, Ordering::Relaxed);
     }
 
     let mut serial_mh = MinHash::<u64, 16, Fnv>::new();
@@ -60,7 +44,7 @@ macro_rules! atomic_word_width_test {
             {
                 let atomic = mh.as_atomic();
                 for v in 0..8u64 {
-                    atomic.fetch_insert_with_siphashes13(v, Ordering::Relaxed);
+                    atomic.fetch_insert_with_siphashes13::<u64, u64>(v, Ordering::Relaxed);
                 }
             }
             assert!(!mh.is_empty());

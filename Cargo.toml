@@ -55,7 +55,7 @@ siphasher = { version = "1.0", default-features = false }
 fnv = { version = "1.0.3", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde-big-array = "0.5"
-sketching-core = { path = "../sketching-core-rs" }
+sketching-core = "0.1"
 dsi-bitstream = { version = "0.9", default-features = false }
 
 [dev-dependencies]

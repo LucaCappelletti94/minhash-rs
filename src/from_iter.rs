@@ -16,11 +16,10 @@ where
     H: Hasher,
     Hash: HashType + Primitive<Word>,
 {
-    /// Build a MinHash from an iterator, inserting each element in turn.
-    ///
-    /// The sketch starts in dense mode (via [`MinHash::new`]); switch to
-    /// sparse mode by seeding an [`Iterator::fold`] over
-    /// [`MinHash::sparse`] instead.
+    /// Build a dense MinHash from an iterator, inserting each element in
+    /// turn. For a sparse prefix, seed a
+    /// [`SparseHashes`](crate::sparse_hashes::SparseHashes) or
+    /// [`SparseValues`](crate::sparse_values::SparseValues) directly.
     ///
     /// # Examples
     ///

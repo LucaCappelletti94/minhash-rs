@@ -53,27 +53,41 @@ let union: HashSet<u64> = left.union(&right).copied().collect();
 assert_eq!(union_sketch, union.iter().collect());
 ```
 
-### Sparse mode
+### Sparse prefixes
 
-For small sets, sparse mode stores the input digests directly in a sorted list instead of expanding each insert through the full k-permutation pipeline. Below capacity, Jaccard on two sparse sketches is quasi-exact on the underlying digest sets (bounded by a `1 / 2^N` collision probability from the hasher and from the encoding, negligible for `Hash = u64`). Once the digest list fills up, the sketch densifies in place.
+Two wrapper types add a sparse prefix that promotes to `MinHash` at capacity. Both hold an inner `MinHash` and share the state-equivalence invariant: after promotion the inner signature is bit-identical to what a from-scratch `MinHash` on the same input would have produced, so classical banded LSH via `band_hashes::<BANDS>()` keeps working across the transition. Both wrappers implement `MinHasher<PERMUTATIONS>`, so `MinHash`, `SparseHashes`, and `SparseValues` are interchangeable behind trait bounds, and cross-wrapper Jaccard (e.g. `SparseHashes` against `SparseValues`) works through the trait's default implementation by densifying both operands.
+
+#### SparseHashes
+
+`SparseHashes<Word, PERMUTATIONS>` stores hash digests in a sorted bottom-k list and defers permutation expansion until the buffer overflows. The stored digests come from the same `Hasher` the eventual dense `MinHash` uses, so no elements are rehashed at promotion. Reach for this variant when the input elements are arbitrary payloads and the hash of the element is what matters, or when the value domain is not compressible enough for a value codec to earn its keep.
 
 ```rust
 use minhash_rs::prelude::*;
 
-// Sparse sketch: stores hash digests, defers permutation expansion.
-let mut sketch = MinHash::<u64, 128>::sparse();
-sketch.insert(42);
-assert!(sketch.may_contain(42));
+let mut sketch = SparseHashes::<u64, 128>::new();
+sketch.insert(42u64);
+assert!(sketch.may_contain(42u64));
 
-// Sparse-vs-sparse Jaccard: sorted-list merge over the digest sets.
-let other: MinHash<u64, 128> =
-    (0..100u64).fold(MinHash::<u64, 128>::sparse(), |mut mh, i| {
-        mh.insert(i);
-        mh
-    });
-let jaccard = sketch.estimate_jaccard_index(&other);
+// Consume the wrapper for the dense signature. Classical LSH lives on `MinHash`.
+let dense: MinHash<u64, 128> = sketch.into();
+assert!(dense.may_contain(42u64));
 ```
 
-The densification step is state-equivalent, not merely estimator-equivalent. The densified sketch is bit-identical to what a from-scratch dense sketch built by inserting the same input set from the start would have produced. Two consequences fall out of that invariant. Sketches built dense from the start and sketches that were sparse and promoted are the same object once dense, so element-wise `min` unions and cross-mode equality Just Work. Banded LSH via `band_hashes::<BANDS>()` works unchanged after promotion, under the same minwise-independence assumptions that classical MinHash LSH already carries. This is what distinguishes the design from a bottom-k / KMV / theta sketch, which trades classical banded LSH for a permanent bottom-k representation.
+#### SparseValues
 
-Two caveats worth surfacing. Sparse-mode Jaccard is exact on digest sets, not on original input elements, so ordinary hash collisions and the `saturating_add(1)` encoding collision at `Hash::MAX` still count. Densification is a deterministic latency spike on the specific insert that triggers overflow, paying `O(PERMUTATIONS * PERMUTATIONS)` on that record before every subsequent insert returns to the from-scratch dense cost of `O(PERMUTATIONS)`. Real-time streaming callers who need smooth tail latency should either pre-densify with `MinHash::new()` or budget the spike explicitly.
+`SparseValues<PERMUTATIONS, Hasher, Hash, Code>` accepts raw `u64` values (the caller casts if their integer domain fits in `u64`) and stores them under a `dsi-bitstream` instantaneous code chosen at the type level, defaulting to `ConstCode<{ code_consts::GAMMA }>`. Any code shipped by `dsi-bitstream` (delta, omega, Rice, exponential Golomb, zeta, pi) can be swapped in by naming it as `Code`. Compressible integer domains such as dense ranges or topologically ordered graph node identifiers collapse to roughly the codeword length per stored value, which is the reason to reach for this variant over `SparseHashes` when the input is already a compact integer identifier.
+
+```rust
+use minhash_rs::prelude::*;
+
+let mut sketch = SparseValues::<128>::new();
+for id in 0u64..100 {
+    sketch.insert(id);
+}
+assert!(sketch.may_contain(42u64));
+let dense: MinHash<u64, 128> = sketch.into();
+```
+
+#### Sparse-mode semantics
+
+Sparse-mode Jaccard is exact on the retained set (digests for `SparseHashes`, raw values for `SparseValues`), not on the original input elements: ordinary hash collisions and (for `SparseHashes`) the `saturating_add(1)` encoding collision at `Hash::MAX` still count. Densification is a deterministic latency spike on the specific insert that triggers overflow, paying `O(PERMUTATIONS * PERMUTATIONS)` on that record before every subsequent insert returns to the from-scratch dense cost of `O(PERMUTATIONS)`. Real-time streaming callers who need smooth tail latency should either pre-densify with `MinHash::new()` or budget the spike explicitly.

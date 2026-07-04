@@ -64,3 +64,34 @@ fn index_mut_allows_overwrite() {
     assert_eq!(array[2], replacement);
     assert!(array[2].may_contain(7_u64));
 }
+/// Exercise every derived trait on MinHashArray by name so the coverage tool
+/// sees the monomorphised entry points.
+#[test]
+#[allow(
+    clippy::useless_borrows_in_formatting,
+    clippy::clone_on_copy,
+    clippy::manual_assert_eq,
+    clippy::no_effect_underscore_binding
+)]
+fn derived_impls_run() {
+    // Default::default and new
+    let a = MinHashArray::<u64, PERMUTATIONS, N>::new();
+    assert_eq!(a, MinHashArray::<u64, PERMUTATIONS, N>::default());
+
+    // Debug::fmt
+    let _ = format!("{:?}", &a);
+
+    // Clone::clone
+    let cloned = a.clone();
+
+    // PartialEq::eq
+    assert!(a == cloned);
+
+    // Index::index
+    let _first: &MinHash<u64, PERMUTATIONS> = &a[0];
+
+    // IndexMut::index_mut
+    let mut b = a;
+    b[0] = MinHash::<u64, PERMUTATIONS>::new();
+    assert!(b[0].is_empty());
+}

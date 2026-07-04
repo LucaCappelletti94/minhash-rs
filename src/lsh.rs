@@ -169,13 +169,7 @@ where
         // With `PERMUTATIONS % BANDS == 0` enforced, `rows` is well-defined
         // and every register participates in exactly one band.
         let rows = PERMUTATIONS / BANDS;
-        if self.is_sparse() {
-            let mut dense: [Word; PERMUTATIONS] = [Word::maximal(); PERMUTATIONS];
-            self.densify_into(&mut dense);
-            core::array::from_fn(|band| band_hash(&dense[band * rows..(band + 1) * rows]))
-        } else {
-            let registers = self.as_ref();
-            core::array::from_fn(|band| band_hash(&registers[band * rows..(band + 1) * rows]))
-        }
+        let registers = self.as_ref();
+        core::array::from_fn(|band| band_hash(&registers[band * rows..(band + 1) * rows]))
     }
 }

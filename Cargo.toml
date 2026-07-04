@@ -1,8 +1,8 @@
 [package]
 name = "minhash-rs"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.85"
 authors = ["Luca Cappelletti <cappelletti.luca94@gmail.com>"]
 description = "A Rust implementation of MinHash trying to be parsimonious with memory."
 homepage = "https://github.com/LucaCappelletti94/minhash-rs"
@@ -55,6 +55,8 @@ siphasher = { version = "1.0", default-features = false }
 fnv = { version = "1.0.3", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde-big-array = "0.5"
+sketching-core = { path = "../sketching-core-rs" }
+dsi-bitstream = { version = "0.9", default-features = false }
 
 [dev-dependencies]
 criterion = "0.8"
@@ -67,9 +69,6 @@ proptest = "1"
 # Criterion benchmark harness
 [[bench]]
 name = "bench_insert"
-harness = false
-[[bench]]
-name = "bench_sparse"
 harness = false
 # Optimize tests so the data-structure heavy tests run quickly, while keeping
 # overflow checks and debug assertions on to catch bugs.

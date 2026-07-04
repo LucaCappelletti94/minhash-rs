@@ -56,11 +56,11 @@ where
     W: Word<H> + SparseFor<H>,
     H: HashType + Primitive<W>,
 {
-    let mut mh = MinHash::<W, PERMUTATIONS, SipHashes13, H>::sparse();
+    let mut mh = SparseHashes::<W, PERMUTATIONS, SipHashes13, H>::new();
     for &v in values {
         mh.insert(v);
     }
-    mh
+    mh.into()
 }
 
 /// Every inserted value must be reported as possibly contained.
@@ -256,5 +256,153 @@ proptest! {
     #[test]
     fn sparse_dense_equivalence(v in values()) {
         for_each_sparse_pair!(prop_sparse_dense_equivalence, &v);
+    }
+}
+
+// ─── SparseValues property harness ─────────────────────────────────────────
+//
+// The critical properties for `SparseValues<PERMUTATIONS, H, Hash, Code>`
+// are (a) sparse-mode membership is exact (no false negatives), (b) the
+// promoted dense state is bit-identical to a from-scratch `MinHash` on the
+// same value sequence and independent of insertion order, and (c) the codec
+// choice is storage-only, so two `SparseValues` built with different codecs
+// on the same input MUST promote to identical dense signatures. Each
+// property is exercised across the codec matrix
+// `{Gamma, Delta, Omega, SigBitsCode}` via `for_each_values_codec!`.
+
+use dsi_bitstream::dispatch::{code_consts, CodeLen, DynamicCodeRead, DynamicCodeWrite};
+use sketching_core::sparse_value_list::{ConstCode, SigBitsCode};
+
+type Gamma = ConstCode<{ code_consts::GAMMA }>;
+type Delta = ConstCode<{ code_consts::DELTA }>;
+type Omega = ConstCode<{ code_consts::OMEGA }>;
+
+fn build_values<Code>(sequence: &[u64]) -> SparseValues<PERMUTATIONS, SipHashes13, u64, Code>
+where
+    Code: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
+{
+    let mut sketch = SparseValues::<PERMUTATIONS, SipHashes13, u64, Code>::new();
+    for &v in sequence {
+        sketch.insert(v);
+    }
+    sketch
+}
+
+fn prop_values_no_false_negatives<Code>(
+    sequence: &[u64],
+) -> Result<(), proptest::test_runner::TestCaseError>
+where
+    Code: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
+{
+    let sketch = build_values::<Code>(sequence);
+    for &v in sequence {
+        prop_assert!(sketch.may_contain(v));
+    }
+    Ok(())
+}
+
+fn prop_values_dense_equivalence<Code>(
+    sequence: &[u64],
+) -> Result<(), proptest::test_runner::TestCaseError>
+where
+    Code: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
+{
+    let promoted = build_values::<Code>(sequence).into_minhash();
+    let mut dense = MinHash::<u64, PERMUTATIONS, SipHashes13, u64>::new();
+    for &v in sequence {
+        dense.insert(v);
+    }
+    prop_assert_eq!(promoted.as_ref(), dense.as_ref());
+    Ok(())
+}
+
+fn prop_values_insertion_order_invariant<Code>(
+    sequence: &[u64],
+) -> Result<(), proptest::test_runner::TestCaseError>
+where
+    Code: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
+{
+    let promoted_forward = build_values::<Code>(sequence).into_minhash();
+    let reversed: alloc::vec::Vec<u64> = sequence.iter().rev().copied().collect();
+    let promoted_reversed = build_values::<Code>(&reversed).into_minhash();
+    prop_assert_eq!(promoted_forward.as_ref(), promoted_reversed.as_ref());
+    Ok(())
+}
+
+fn prop_values_jaccard_bounds<Code>(
+    a: &[u64],
+    b: &[u64],
+) -> Result<(), proptest::test_runner::TestCaseError>
+where
+    Code: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
+{
+    let sa = build_values::<Code>(a);
+    let sb = build_values::<Code>(b);
+    let j_ab = sa.estimate_jaccard_index(&sb);
+    let j_ba = sb.estimate_jaccard_index(&sa);
+    prop_assert!((0.0..=1.0).contains(&j_ab), "Jaccard {j_ab} out of [0, 1]");
+    prop_assert!(
+        (j_ab - j_ba).abs() < 1e-9,
+        "Jaccard MUST be symmetric: {j_ab} vs {j_ba}"
+    );
+    prop_assert!((sa.estimate_jaccard_index(&sa) - 1.0).abs() < 1e-9);
+    Ok(())
+}
+
+fn prop_values_codec_agnostic_promoted_state<CodeA, CodeB>(
+    sequence: &[u64],
+) -> Result<(), proptest::test_runner::TestCaseError>
+where
+    CodeA: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
+    CodeB: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
+{
+    let a = build_values::<CodeA>(sequence).into_minhash();
+    let b = build_values::<CodeB>(sequence).into_minhash();
+    prop_assert_eq!(a.as_ref(), b.as_ref());
+    Ok(())
+}
+
+/// Runs a single-set property across the `SparseValues` codec matrix.
+/// The codec is a phantom type parameter on each helper, so we invoke each
+/// helper once per codec via turbofish.
+macro_rules! for_each_values_codec {
+    ($prop:ident, $($arg:expr),+ $(,)?) => {{
+        $prop::<Gamma>($($arg,)+)?;
+        $prop::<Delta>($($arg,)+)?;
+        $prop::<Omega>($($arg,)+)?;
+        $prop::<SigBitsCode>($($arg,)+)?;
+    }};
+}
+
+extern crate alloc;
+
+proptest! {
+    #[test]
+    fn values_no_false_negatives(v in values()) {
+        for_each_values_codec!(prop_values_no_false_negatives, &v);
+    }
+
+    #[test]
+    fn values_insertion_order_invariant(v in values()) {
+        for_each_values_codec!(prop_values_insertion_order_invariant, &v);
+    }
+
+    #[test]
+    fn values_dense_equivalence(v in values()) {
+        for_each_values_codec!(prop_values_dense_equivalence, &v);
+    }
+
+    #[test]
+    fn values_jaccard_bounds(a in values(), b in values()) {
+        for_each_values_codec!(prop_values_jaccard_bounds, &a, &b);
+    }
+
+    #[test]
+    fn values_codec_agnostic_promoted_state(v in values()) {
+        // Every unordered pair of distinct codecs.
+        prop_values_codec_agnostic_promoted_state::<Gamma, Delta>(&v)?;
+        prop_values_codec_agnostic_promoted_state::<Gamma, Omega>(&v)?;
+        prop_values_codec_agnostic_promoted_state::<Gamma, SigBitsCode>(&v)?;
+        prop_values_codec_agnostic_promoted_state::<Delta, Omega>(&v)?;
     }
 }

@@ -3,6 +3,24 @@
 All notable changes to this project are documented in this file. The format is
 loosely based on Keep a Changelog, and the project follows semantic versioning.
 
+## 0.6.0
+
+### Breaking
+
+- `MinHash` is now strictly the dense Broder `k`-mins signature. The sparse-mode dispatch, the `sparse()` constructor, and every `is_sparse` / `densify` helper are removed. Sparse-mode logic moves to the two new wrapper types.
+- Two new wrappers ship: `SparseHashes<Word, PERMUTATIONS, H, Hash>` (bottom-k list of hash digests, direct replacement for the old `MinHash::sparse()`) and `SparseValues<PERMUTATIONS, H, Hash, Code>` (raw `u64` values under a `dsi-bitstream` code, replaces the `MinHashValues` type from 0.5). Both wrap an inner `MinHash` and promote in place at capacity.
+- New `MinHasher<const P: usize, Value: CoreHash = u64>` trait unifies the three sketch types. `MinHash` and `SparseHashes` implement it blanket over any `V: CoreHash`. `SparseValues` implements it only for `Value = u64` because its codec buffer stores raw `u64` inputs. Trait methods are `insert`, `may_contain`, `densify`, `to_dense`, and a default `estimate_jaccard_index` that dispatches through mutual densification.
+- `insert` on the sparse wrappers returns `Outcome { Inserted, Duplicate, Promoted }` so callers can observe the `O(P^2)` promotion event. `MinHash`'s identity impl always returns `Inserted`.
+- `MinHash`'s `PartialEq` / `Eq` / `CoreHash` impls simplify to plain per-slot comparison. New `MinHash::from_words`, `as_words`, `as_words_mut`, and `into_words` accessors expose the raw slot array for the wrappers to seed and inspect.
+- `From<SparseHashes<...>> for MinHash<...>` and `From<SparseValues<...>> for MinHash<...>` for the natural `wrapper.into()` conversion.
+- `MinHashValues` renamed to `SparseValues`.
+- Retired `benches/bench_sparse.rs`. Wrapper-specific benches will return in a follow-up.
+
+### Added
+
+- `sketching-core` and `dsi-bitstream = "0.9"` as direct dependencies for the codec surface. `sketching_core::sparse_value_list` ships the codec markers (`ConstCode<CODE>`, `SigBitsCode`, and every `dsi-bitstream` code accessible via `ConstCode`).
+
+
 ## 0.5.0
 
 ### Breaking

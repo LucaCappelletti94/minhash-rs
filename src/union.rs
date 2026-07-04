@@ -8,11 +8,8 @@ use crate::maximal::Maximal;
 use crate::minhash::MinHash;
 use crate::primitive::Primitive;
 
-// MinHash stores per-permutation minimums; taking the element-wise min of
-// two sketches yields the sketch of the union of the underlying sets. This is
-// therefore a union (merge), not an intersection. Sparse-vs-sparse operands
-// use the cheap sorted-list merge; mixed modes densify the sparse operand
-// first.
+// MinHash stores per-permutation minimums, so element-wise `min` of two
+// sketches yields the sketch of the union of the underlying sets.
 
 impl<Word, H, const PERMUTATIONS: usize, Hash> BitOrAssign<&Self>
     for MinHash<Word, PERMUTATIONS, H, Hash>

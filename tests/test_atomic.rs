@@ -67,3 +67,40 @@ fn atomic_insert_concurrent_inserts_all_values() {
         );
     }
 }
+#[test]
+fn iter_hashes_from_value_matches_generic_and_specialised() {
+    let sip_iter: Vec<u64> = MinHash::<u64, 32>::iter_siphashes13_from_value(42u64).collect();
+    let generic_iter: Vec<u64> =
+        MinHash::<u64, 32>::iter_hashes_from_value(42u64, siphasher::sip128::SipHasher13::new())
+            .collect();
+    let fnv_iter: Vec<u64> = MinHash::<u64, 32>::iter_fnv_from_value(42u64).collect();
+
+    assert_eq!(
+        sip_iter, generic_iter,
+        "siphashes13 and generic with SipHasher13 must produce identical hashes",
+    );
+    assert_ne!(
+        sip_iter, fnv_iter,
+        "SipHash and FNV must produce different hash sequences",
+    );
+}
+
+#[test]
+fn fetch_insert_with_siphashes13_membership() {
+    let mut mh = MinHash::<u64, 32, SipHashes13>::new();
+    {
+        let atomic = mh.as_atomic();
+        atomic.fetch_insert_with_siphashes13::<u64, u64>(42u64, Ordering::Relaxed);
+    }
+    assert!(mh.may_contain(42u64));
+}
+
+#[test]
+fn fetch_insert_with_fnv_membership() {
+    let mut mh = MinHash::<u64, 32, Fnv>::new();
+    {
+        let atomic = mh.as_atomic();
+        atomic.fetch_insert_with_fnv::<u64, u64>(42u64, Ordering::Relaxed);
+    }
+    assert!(mh.may_contain(42u64));
+}

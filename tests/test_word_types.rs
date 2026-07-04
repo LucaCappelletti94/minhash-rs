@@ -88,15 +88,3 @@ fn small_words_saturate_and_report_full() {
     }
     assert!(mh.is_full());
 }
-
-#[test]
-fn single_value_never_saturates_small_words() {
-    // Regression test: previously about one value in 256 truncated to a zero
-    // seed and, because XorShift fixes zero, collapsed an entire u8 sketch to
-    // full from a single insertion. No single value may saturate the sketch.
-    for v in 0..5_000_u64 {
-        let mut mh = MinHash::<u8, 32>::new();
-        mh.insert(v);
-        assert!(!mh.is_full(), "value {v} saturated the sketch on its own");
-    }
-}

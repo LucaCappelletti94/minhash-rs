@@ -8,84 +8,12 @@
 //!   atomics, and [`AtomicFetchInsert`] provides concurrent inserts on top.
 
 use core::hash::{Hash as CoreHash, Hasher as CoreHasher};
-use core::marker::PhantomData;
 use core::sync::atomic::Ordering;
 
 use crate::hasher::Hasher;
 use crate::hashtype::HashType;
-use crate::minhash::MinHash;
+use crate::minhash::{HashStream, MinHash};
 use crate::primitive::Primitive;
-
-/// Iterator that emits `count` per-permutation hashes seeded by the raw
-/// digest of `value` under `hasher`.
-///
-/// Zero is never emitted. XorShift has zero as a fixed point, so a stream
-/// that ever hits zero would stay there for the rest of the sketch. The
-/// guard on the `Hash` value keeps the SplitMix+XorShift stream lively, and
-/// a second guard on the truncated `Word` prevents the sparse mode flag
-/// (`words[0] == 0`) from being accidentally set by a dense stream whose low
-/// bits happen to be zero.
-struct HashStream<Word, Hash>
-where
-    Word: Copy + PartialEq,
-    Hash: HashType + Primitive<Word>,
-{
-    hash: Hash,
-    zero_word: Word,
-    one_word: Word,
-    remaining: usize,
-    _word: PhantomData<Word>,
-}
-
-impl<Word, Hash> HashStream<Word, Hash>
-where
-    Word: Copy + PartialEq,
-    Hash: HashType + Primitive<Word>,
-{
-    #[inline]
-    fn new(digest: Hash, count: usize) -> Self {
-        let mut hash = digest.splitmix().splitmix();
-        if hash == Hash::ZERO {
-            hash = Hash::ONE;
-        }
-        Self {
-            hash,
-            zero_word: Hash::ZERO.convert(),
-            one_word: Hash::ONE.convert(),
-            remaining: count,
-            _word: PhantomData,
-        }
-    }
-}
-
-impl<Word, Hash> Iterator for HashStream<Word, Hash>
-where
-    Word: Copy + PartialEq,
-    Hash: HashType + Primitive<Word>,
-{
-    type Item = Word;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.remaining == 0 {
-            return None;
-        }
-        self.remaining -= 1;
-
-        self.hash = self.hash.xorshift();
-        if self.hash == Hash::ZERO {
-            self.hash = Hash::ONE;
-        }
-        let mut w: Word = self.hash.convert();
-        if w == self.zero_word {
-            w = self.one_word;
-        }
-        Some(w)
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.remaining, Some(self.remaining))
-    }
-}
 
 /// An atomic integer that supports atomic minimum-update.
 pub trait AtomicFetchMin {
@@ -218,9 +146,6 @@ macro_rules! atomic_impls {
             type AtomicWord = core::sync::atomic::$atomic;
 
             fn as_atomic(&mut self) -> &[core::sync::atomic::$atomic] {
-                if self.is_sparse() {
-                    self.densify();
-                }
                 let words: &mut [$word] = self.as_mut();
                 // SAFETY: the atomic has identical size and alignment to
                 // `$word`, so the slice layout (data pointer and length) is

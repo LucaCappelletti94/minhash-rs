@@ -109,7 +109,7 @@ jobs:
       # and give a much faster feedback loop besides.
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     timeout-minutes: 30
 
     steps:
@@ -123,7 +123,7 @@ jobs:
           rustup default nightly
       - name: Install cargo-mutants
         uses: taiki-e/install-action@cargo-mutants
-      - name: Run mutation testing (shard ${{ matrix.shard }}/4)
+      - name: Run mutation testing (shard ${{ matrix.shard }}/8)
         # Mutates the library one site at a time and reruns the tests. A
         # surviving mutant means some behaviour is never asserted, so the job
         # fails until a test catches it.
@@ -156,7 +156,7 @@ jobs:
         #   1 breaks the codec reader's termination condition and drives it
         #   into an infinite scan of the tail bytes.
         run: >-
-          cargo mutants --in-place --shard ${{ matrix.shard }}/4
+          cargo mutants --in-place --shard ${{ matrix.shard }}/8 --sharding slice
           --exclude-re "replace == with != in iter_word_hashes"
           --exclude-re "replace == with != in.*fetch_insert"
           --exclude-re "replace < with <= in.*insert_hash_stream"

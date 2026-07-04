@@ -211,3 +211,47 @@ fn splitmix_u32_and_u64_differ() {
         "u32 and u64 splitmix must differ for the same seed"
     );
 }
+
+// Pinned-output tests below: any bit-op mutation in the splitmix body
+// (^ vs |, ^ vs &, >> vs <<) changes the output for at least one seed, so
+// asserting the exact bit pattern for a handful of seeds detects those
+// mutations. The expected constants are the outputs of the current
+// implementation, computed by running the same reduction in Python and
+// cross-checked against a reference SplitMix64 / lowbias32 mixer.
+
+#[test]
+fn splitmix_u64_pinned_outputs() {
+    assert_eq!(
+        <u64 as HashType>::splitmix(0x0000_0000_0000_0001),
+        0x5692_161d_100b_05e5
+    );
+    assert_eq!(
+        <u64 as HashType>::splitmix(0x0000_0000_0000_0002),
+        0xdbd2_3897_3a2b_148a
+    );
+    assert_eq!(
+        <u64 as HashType>::splitmix(0x0000_0000_0000_0003),
+        0x1e53_5eed_e314_28f0
+    );
+    assert_eq!(
+        <u64 as HashType>::splitmix(0x0000_0000_dead_beef),
+        0x4e06_2702_ec92_9eea
+    );
+    assert_eq!(
+        <u64 as HashType>::splitmix(0xdead_beef_dead_beef),
+        0x64c2_df93_e2e8_338c
+    );
+    assert_eq!(
+        <u64 as HashType>::splitmix(0xffff_ffff_ffff_fffe),
+        0xda26_e52f_a373_0902
+    );
+}
+
+#[test]
+fn splitmix_u32_pinned_outputs() {
+    assert_eq!(<u32 as HashType>::splitmix(0x0000_0001), 0x6889_90c0);
+    assert_eq!(<u32 as HashType>::splitmix(0x0000_0002), 0xd113_2181);
+    assert_eq!(<u32 as HashType>::splitmix(0x0000_0003), 0x53f1_e9dd);
+    assert_eq!(<u32 as HashType>::splitmix(0xdead_beef), 0xe628_c683);
+    assert_eq!(<u32 as HashType>::splitmix(0xffff_fffe), 0x97a1_065a);
+}

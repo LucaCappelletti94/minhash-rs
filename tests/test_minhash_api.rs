@@ -39,3 +39,31 @@ fn indexing_and_slice_views_expose_words() {
     mh.as_mut()[1] = 456;
     assert_eq!(mh[1], 456);
 }
+
+#[test]
+fn distinct_sketches_are_not_equal() {
+    // Defends PartialEq::eq: any mutation that collapses eq to `true`
+    // fails this comparison.
+    let mut a = MinHash::<u64, 8>::new();
+    let b = MinHash::<u64, 8>::new();
+    a.insert(42u64);
+    assert_ne!(a, b);
+
+    // Same input produces equal sketches, so eq is not trivially `false`.
+    let mut c = MinHash::<u64, 8>::new();
+    c.insert(42u64);
+    assert_eq!(a, c);
+}
+
+#[test]
+fn debug_output_is_nonempty_and_names_type() {
+    // Defends Debug::fmt: any mutation that empties the fmt output fails
+    // one of these two asserts.
+    let mh = MinHash::<u64, 8>::new();
+    let rendered = format!("{mh:?}");
+    assert!(!rendered.is_empty());
+    assert!(
+        rendered.contains("MinHash"),
+        "Debug output should name the type, got {rendered:?}"
+    );
+}

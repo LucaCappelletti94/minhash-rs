@@ -47,15 +47,6 @@ fn build_sparse_hashes_pair(
     (a, b)
 }
 
-/// Build a `SparseValues<128>` sketch from the given value slice.
-fn build_sparse_values(values: &[u64]) -> SparseValues<128> {
-    let mut sv = SparseValues::<128>::new();
-    for &v in values {
-        sv.insert(v);
-    }
-    sv
-}
-
 #[test]
 fn minhash_dense_dense_trait_matches_inherent() {
     let (a, b, _truth) = build_dense_pair(
@@ -71,7 +62,13 @@ fn minhash_dense_dense_trait_matches_inherent() {
 }
 
 #[test]
-fn sparse_hashes_sparse_sparse_trait_via_dense_oracle() {
+fn sparse_hashes_sparse_sparse_trait_takes_fast_path() {
+    // Both operands still sparse. The trait method delegates to the
+    // inherent sparse-sparse fast path, which is exact on the retained
+    // digest sets. The exact answer matches the true set Jaccard within
+    // the 64-bit hash-collision floor (~1e-15). The dense estimator's
+    // per-register agreement fraction differs by O(1 / sqrt(P)) in
+    // expectation and does not enter this assertion.
     let a_values: alloc::vec::Vec<u64> = (0..100).collect();
     let b_values: alloc::vec::Vec<u64> = (50..150).collect();
     let (sa, sb) = build_sparse_hashes_pair(&a_values, &b_values);
@@ -81,15 +78,23 @@ fn sparse_hashes_sparse_sparse_trait_via_dense_oracle() {
     let trait_result =
         <SparseHashes<u64, 128> as MinHasher<128, u64>>::estimate_jaccard_index(&sa, &sb);
 
-    let da: MinHash<u64, 128> = sa.into();
-    let db: MinHash<u64, 128> = sb.into();
-    let dense_oracle = da.estimate_jaccard_index(&db);
+    let a_set: alloc::collections::BTreeSet<u64> = a_values.iter().copied().collect();
+    let b_set: alloc::collections::BTreeSet<u64> = b_values.iter().copied().collect();
+    #[allow(clippy::cast_precision_loss)]
+    let truth = a_set.intersection(&b_set).count() as f64 / a_set.union(&b_set).count() as f64;
 
-    // Sparse-to-dense promotion is bit-identical to from-scratch MinHash,
-    // so the trait path (which calls to_dense) must match the dense oracle.
     assert!(
-        (trait_result - dense_oracle).abs() < 1e-15,
-        "trait path must match dense oracle after promotion"
+        (trait_result - truth).abs() < 1e-9,
+        "sparse fast path must match true Jaccard within collision floor"
+    );
+
+    // Also assert the trait method reaches the same value as the inherent
+    // method: they must be bit-identical because the trait body delegates
+    // straight to the inherent.
+    let inherent_result = sa.estimate_jaccard_index(&sb);
+    assert!(
+        (trait_result - inherent_result).abs() < 1e-15,
+        "trait dispatch must be bit-identical to the inherent method"
     );
 }
 
@@ -112,44 +117,6 @@ fn sparse_hashes_densified_trait_via_dense_oracle() {
     assert!(
         (trait_result - dense_oracle).abs() < 1e-15,
         "densified trait path must match dense oracle"
-    );
-}
-
-#[test]
-fn cross_wrapper_sparse_hashes_vs_sparse_values() {
-    let a_values: alloc::vec::Vec<u64> = (0..100).collect();
-    let b_values: alloc::vec::Vec<u64> = (50..150).collect();
-    let (sh, _) = build_sparse_hashes_pair(&a_values, &b_values);
-    let sv = build_sparse_values(&b_values);
-
-    let trait_result =
-        <SparseHashes<u64, 128> as MinHasher<128, u64>>::estimate_jaccard_index(&sh, &sv);
-
-    let da: MinHash<u64, 128> = sh.into();
-    let db: MinHash<u64, 128> = sv.into();
-    let dense_oracle = da.estimate_jaccard_index(&db);
-
-    assert!(
-        (trait_result - dense_oracle).abs() < 1e-15,
-        "cross-wrapper trait path must match dense oracle"
-    );
-}
-
-#[test]
-fn cross_wrapper_sparse_values_vs_minhash() {
-    let a_values: alloc::vec::Vec<u64> = (0..100).collect();
-    let b_values: alloc::vec::Vec<u64> = (50..150).collect();
-    let sv = build_sparse_values(&a_values);
-    let (mh, _, _) = build_dense_pair(&b_values, &a_values);
-
-    let trait_result = <SparseValues<128> as MinHasher<128, u64>>::estimate_jaccard_index(&sv, &mh);
-
-    let da: MinHash<u64, 128> = sv.into();
-    let dense_oracle = da.estimate_jaccard_index(&mh);
-
-    assert!(
-        (trait_result - dense_oracle).abs() < 1e-15,
-        "SparseValues vs MinHash trait path must match dense oracle"
     );
 }
 

@@ -55,7 +55,7 @@ assert_eq!(union_sketch, union.iter().collect());
 
 ### Sparse prefixes
 
-Two wrapper types add a sparse prefix that promotes to `MinHash` at capacity. Both hold an inner `MinHash` and share the state-equivalence invariant: after promotion the inner signature is bit-identical to what a from-scratch `MinHash` on the same input would have produced, so classical banded LSH via `band_hashes::<BANDS>()` keeps working across the transition. Both wrappers implement `MinHasher<PERMUTATIONS>`, so `MinHash`, `SparseHashes`, and `SparseValues` are interchangeable behind trait bounds, and cross-wrapper Jaccard (e.g. `SparseHashes` against `SparseValues`) works through the trait's default implementation by densifying both operands.
+Two wrapper types add a sparse prefix that promotes to `MinHash` at capacity. Both hold an inner `MinHash` and share the state-equivalence invariant: after promotion the inner signature is bit-identical to what a from-scratch `MinHash` on the same input would have produced, so classical banded LSH via `band_hashes::<BANDS>()` keeps working across the transition. Both wrappers implement `MinHasher<PERMUTATIONS>`, so `MinHash`, `SparseHashes`, and `SparseValues` are interchangeable behind trait bounds. The trait's `estimate_jaccard_index` compares two sketches of the same variant and takes the exact bottom-`P` merge whenever both sides are still under capacity. Cross-variant Jaccard (e.g. `SparseHashes` against `SparseValues`) is done explicitly by calling `to_dense` on both operands first and comparing the resulting dense sketches.
 
 #### SparseHashes
 

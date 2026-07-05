@@ -361,3 +361,93 @@ fn minhasher_trait_impl_dispatches_to_inherent() {
         "trait to_dense must match into_minhash"
     );
 }
+
+#[test]
+fn from_iterator_matches_new_plus_insert_loop() {
+    // Defends the `FromIterator<u64>` impl: collecting into a
+    // `SparseValues` must produce the same bytes as building one by hand
+    // with `new()` and a sequence of `insert()` calls.
+    let values: alloc::vec::Vec<u64> = (0u64..30).collect();
+
+    let collected: SparseValues<128> = values.iter().copied().collect();
+
+    let mut manual = SparseValues::<128>::new();
+    for &v in &values {
+        manual.insert(v);
+    }
+
+    assert_eq!(
+        collected.count(),
+        manual.count(),
+        "collected sketch must retain the same count as new + insert loop"
+    );
+    let collected_dense: MinHash<u64, 128> = collected.into();
+    let manual_dense: MinHash<u64, 128> = manual.into();
+    assert_eq!(
+        collected_dense.as_words(),
+        manual_dense.as_words(),
+        "collected sketch must densify to the same signature as new + insert loop"
+    );
+}
+
+#[test]
+fn trait_band_hashes_matches_inherent_on_densified_signature() {
+    // Defends the sealed default `band_hashes::<BANDS>()` on `MinHasher`:
+    // the trait output must equal `MinHash::band_hashes::<BANDS>()` on the
+    // densified signature, which is what the default body computes.
+    let values: alloc::vec::Vec<u64> = (0u64..30).collect();
+    let mut sparse: SparseValues<128> = SparseValues::new();
+    for &v in &values {
+        sparse.insert(v);
+    }
+
+    let trait_hashes: [u64; 16] =
+        <SparseValues<128> as MinHasher<128, u64>>::band_hashes::<16>(&sparse);
+    let inherent_hashes: [u64; 16] = sparse.to_dense().band_hashes::<16>();
+
+    assert_eq!(
+        trait_hashes, inherent_hashes,
+        "trait band_hashes must match MinHash::band_hashes on the densified signature"
+    );
+}
+
+#[test]
+fn sparse_sparse_trait_takes_fast_path_via_true_jaccard() {
+    // Defends the sparse-sparse fast path reached through the trait:
+    // `<SparseValues as MinHasher>::estimate_jaccard_index` must give the
+    // exact set Jaccard on the retained raw values when both operands are
+    // still under capacity. SparseValues has no hash-collision floor
+    // because it retains values verbatim, so the assertion is tight.
+    let a_values: alloc::vec::Vec<u64> = (0u64..30).collect();
+    let b_values: alloc::vec::Vec<u64> = (15u64..45).collect();
+
+    let mut sa: SparseValues<128> = SparseValues::new();
+    let mut sb: SparseValues<128> = SparseValues::new();
+    for &v in &a_values {
+        sa.insert(v);
+    }
+    for &v in &b_values {
+        sb.insert(v);
+    }
+    assert!(sa.is_sparse());
+    assert!(sb.is_sparse());
+
+    let trait_result = <SparseValues<128> as MinHasher<128, u64>>::estimate_jaccard_index(&sa, &sb);
+
+    let a_set: alloc::collections::BTreeSet<u64> = a_values.iter().copied().collect();
+    let b_set: alloc::collections::BTreeSet<u64> = b_values.iter().copied().collect();
+    #[allow(clippy::cast_precision_loss)]
+    let truth = a_set.intersection(&b_set).count() as f64 / a_set.union(&b_set).count() as f64;
+
+    assert!(
+        (trait_result - truth).abs() < 1e-15,
+        "sparse-sparse trait fast path must match true Jaccard exactly on retained values"
+    );
+
+    // Also assert bit-identity to the inherent path.
+    let inherent = sa.estimate_jaccard_index(&sb);
+    assert!(
+        (trait_result - inherent).abs() < 1e-15,
+        "trait dispatch must be bit-identical to the inherent method"
+    );
+}

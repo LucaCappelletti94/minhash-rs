@@ -146,6 +146,35 @@ where
         }
         0
     }
+
+    /// Number of distinct digests currently held.
+    ///
+    /// Returns `Some(count)` while the sketch is still in sparse mode, and
+    /// `None` once it has densified. Densification discards the retained
+    /// digest set in favour of the per-permutation minimum registers, so
+    /// the exact count of distinct inputs is unrecoverable from a dense
+    /// signature.
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut sketch = SparseHashes::<u64, 128>::new();
+    /// sketch.insert(42u64);
+    /// sketch.insert(7u64);
+    /// sketch.insert(42u64); // duplicate
+    /// assert_eq!(sketch.distinct_hashes(), Some(2));
+    ///
+    /// sketch.densify();
+    /// assert_eq!(sketch.distinct_hashes(), None);
+    /// ```
+    #[must_use]
+    pub fn distinct_hashes(&self) -> Option<usize> {
+        if self.is_sparse() {
+            Some(self.count())
+        } else {
+            None
+        }
+    }
 }
 
 impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> Default
@@ -208,6 +237,43 @@ where
             }
         }
         *self.inner.as_words_mut() = target;
+    }
+
+    /// Iterate the distinct digests currently held, in ascending order.
+    ///
+    /// Returns `Some(iterator)` while the sketch is still in sparse mode,
+    /// and `None` once it has densified. The iterator yields decoded
+    /// [`HashType`] values, undoing the saturating encoding used for the
+    /// zero-terminated storage layout.
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut sketch = SparseHashes::<u64, 128>::new();
+    /// sketch.insert(1u64);
+    /// sketch.insert(2u64);
+    /// sketch.insert(3u64);
+    /// let digests: Vec<u64> =
+    ///     sketch.hashes().expect("still sparse").collect();
+    /// assert_eq!(digests.len(), 3);
+    /// // Digests are stored in ascending order.
+    /// assert!(digests.windows(2).all(|w| w[0] < w[1]));
+    ///
+    /// sketch.densify();
+    /// assert!(sketch.hashes().is_none());
+    /// ```
+    #[must_use]
+    pub fn hashes(&self) -> Option<impl Iterator<Item = Hash> + '_> {
+        if !self.is_sparse() {
+            return None;
+        }
+        let count = self.count();
+        let words = self.inner.as_words();
+        Some(
+            words[1..=count].iter().map(|&encoded| {
+                <Word as Primitive<Hash>>::convert(encoded).wrapping_sub(Hash::ONE)
+            }),
+        )
     }
 
     /// Estimate the Jaccard similarity between two `SparseHashes` sketches.
@@ -318,6 +384,14 @@ where
     }
 }
 
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> crate::min_hasher::sealed::Sealed
+    for SparseHashes<Word, PERMUTATIONS, H, Hash>
+where
+    Word: SparseFor<Hash>,
+    Hash: Primitive<Word>,
+{
+}
+
 // ─── MinHasher trait impl ───────────────────────────────────────────────────
 
 impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, V: CoreHash>
@@ -346,5 +420,38 @@ where
         let mut cloned = *self;
         cloned.densify();
         cloned.inner
+    }
+
+    fn estimate_jaccard_index(&self, other: &Self) -> f64 {
+        SparseHashes::estimate_jaccard_index(self, other)
+    }
+}
+
+// ─── FromIterator ───────────────────────────────────────────────────────────
+
+/// Build a `SparseHashes` from any iterator of hashable values, exactly
+/// mirroring the `FromIterator` impl on [`MinHash`]:
+///
+/// ```
+/// use minhash_rs::prelude::*;
+///
+/// let sketch: SparseHashes<u64, 128> = (0u64..30).collect();
+/// assert!(sketch.is_sparse());
+/// assert_eq!(sketch.count(), 30);
+/// assert!(sketch.may_contain(0u64));
+/// assert!(!sketch.may_contain(1_000u64));
+/// ```
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, V: CoreHash>
+    core::iter::FromIterator<V> for SparseHashes<Word, PERMUTATIONS, H, Hash>
+where
+    Word: SparseFor<Hash> + Ord + Copy + Maximal + Primitive<Hash>,
+    Hash: HashType + Primitive<Word>,
+{
+    fn from_iter<I: IntoIterator<Item = V>>(iter: I) -> Self {
+        let mut sketch = SparseHashes::<Word, PERMUTATIONS, H, Hash>::new();
+        for value in iter {
+            sketch.insert(value);
+        }
+        sketch
     }
 }

@@ -240,6 +240,70 @@ where
         }
     }
 
+    /// Number of distinct values currently held.
+    ///
+    /// Returns `Some(count)` while the sketch is still in sparse mode, and
+    /// `None` once it has densified. Densification hashes each retained
+    /// value into the per-permutation minimum registers and discards the
+    /// value list itself, so the exact count of distinct inputs is
+    /// unrecoverable from a dense signature.
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut sketch = SparseValues::<128>::new();
+    /// sketch.insert(1);
+    /// sketch.insert(2);
+    /// sketch.insert(1); // duplicate
+    /// assert_eq!(sketch.distinct_values(), Some(2));
+    ///
+    /// sketch.densify();
+    /// assert_eq!(sketch.distinct_values(), None);
+    /// ```
+    #[must_use]
+    pub fn distinct_values(&self) -> Option<usize> {
+        if self.is_sparse() {
+            Some(self.count() as usize)
+        } else {
+            None
+        }
+    }
+
+    /// Iterate the distinct raw values currently held, in descending order.
+    ///
+    /// Returns `Some(iterator)` while the sketch is still in sparse mode,
+    /// and `None` once it has densified. The iterator decodes the
+    /// codec-encoded byte stream one value at a time, so no allocation
+    /// occurs.
+    ///
+    /// ```
+    /// use minhash_rs::prelude::*;
+    ///
+    /// let mut sketch = SparseValues::<128>::new();
+    /// sketch.insert(1);
+    /// sketch.insert(2);
+    /// sketch.insert(3);
+    /// let values: Vec<u64> =
+    ///     sketch.values().expect("still sparse").collect();
+    /// assert_eq!(values, vec![3, 2, 1]);
+    /// sketch.densify();
+    /// assert!(sketch.values().is_none());
+    /// ```
+    #[must_use]
+    pub fn values(&self) -> Option<ValueIter<'_, BE, Code>> {
+        if !self.is_sparse() {
+            return None;
+        }
+        let count = self.count();
+        let tail = self.tail_bytes();
+        Some(ValueIter::<BE, Code>::new(
+            tail,
+            Self::PREAMBLE_BITS,
+            count,
+            Self::code(),
+        ))
+    }
+
     #[inline]
     fn set_count(&mut self, count: u32) {
         write_fixed_bits(
@@ -370,6 +434,13 @@ where
     }
 }
 
+impl<const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Code> crate::min_hasher::sealed::Sealed
+    for SparseValues<PERMUTATIONS, H, Hash, Code>
+where
+    Hash: Primitive<u64>,
+{
+}
+
 // ─── MinHasher trait impl ───────────────────────────────────────────────────
 
 impl<const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Code> MinHasher<PERMUTATIONS, u64>
@@ -402,6 +473,44 @@ where
         let mut cloned = *self;
         cloned.densify();
         cloned.inner
+    }
+
+    fn estimate_jaccard_index(&self, other: &Self) -> f64 {
+        SparseValues::estimate_jaccard_index(self, other)
+    }
+}
+
+// ─── FromIterator ───────────────────────────────────────────────────────────
+
+/// Build a `SparseValues` from any iterator of `u64` values. The values are
+/// retained verbatim (not pre-hashed) until promotion, so under-capacity
+/// membership is exact on the raw elements:
+///
+/// ```
+/// use minhash_rs::prelude::*;
+///
+/// let sketch: SparseValues<128> = (0u64..30).collect();
+/// assert!(sketch.is_sparse());
+/// assert_eq!(sketch.count(), 30);
+/// assert!(sketch.may_contain(0u64));
+/// assert!(!sketch.may_contain(1_000u64));
+/// ```
+impl<const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Code> core::iter::FromIterator<u64>
+    for SparseValues<PERMUTATIONS, H, Hash, Code>
+where
+    Hash: HashType + Primitive<u64>,
+    u64: Primitive<Hash>,
+    Code: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
+    for<'r> BufBitReader<BE, MemWordReader<u64, &'r [u64], true>>:
+        CodesRead<BE> + BitSeek + BitRead<BE>,
+    for<'w> BufBitWriter<BE, MemWordWriterSlice<u64, &'w mut [u64]>>: CodesWrite<BE> + BitWrite<BE>,
+{
+    fn from_iter<I: IntoIterator<Item = u64>>(iter: I) -> Self {
+        let mut sketch = SparseValues::<PERMUTATIONS, H, Hash, Code>::new();
+        for value in iter {
+            sketch.insert(value);
+        }
+        sketch
     }
 }
 

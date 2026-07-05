@@ -128,3 +128,48 @@ fn debug_output_is_nonempty_and_names_type() {
         "Debug output should name the type, got {rendered:?}"
     );
 }
+
+#[test]
+fn from_iterator_matches_new_plus_insert_loop() {
+    // Defends the `FromIterator<Value>` impl: collecting into a
+    // `SparseHashes` must produce the same densified signature as building
+    // one by hand with `new()` and a sequence of `insert()` calls.
+    let values: alloc::vec::Vec<u64> = (0u64..30).collect();
+
+    let collected: SparseHashes<u64, 128> = values.iter().copied().collect();
+
+    let mut manual = SparseHashes::<u64, 128>::new();
+    for &v in &values {
+        manual.insert(v);
+    }
+
+    let collected_dense: MinHash<u64, 128> = collected.into();
+    let manual_dense: MinHash<u64, 128> = manual.into();
+    assert_eq!(
+        collected_dense.as_words(),
+        manual_dense.as_words(),
+        "collected sketch must densify to the same signature as new + insert loop"
+    );
+}
+
+#[test]
+fn trait_band_hashes_matches_inherent_on_densified_signature() {
+    // Defends the sealed default `band_hashes::<BANDS>()` on `MinHasher`:
+    // the trait output must equal `MinHash::band_hashes::<BANDS>()` on the
+    // densified signature, which is what the default body computes.
+    let values: alloc::vec::Vec<u64> = (0u64..30).collect();
+    let mut sparse = SparseHashes::<u64, 128>::new();
+    for &v in &values {
+        sparse.insert(v);
+    }
+
+    let trait_hashes: [u64; 16] =
+        <SparseHashes<u64, 128> as MinHasher<128, u64>>::band_hashes::<16>(&sparse);
+    let dense: MinHash<u64, 128> = sparse.into();
+    let inherent_hashes: [u64; 16] = dense.band_hashes::<16>();
+
+    assert_eq!(
+        trait_hashes, inherent_hashes,
+        "trait band_hashes must match MinHash::band_hashes on the densified signature"
+    );
+}

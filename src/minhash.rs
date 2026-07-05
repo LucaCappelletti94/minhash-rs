@@ -541,6 +541,14 @@ where
 
 // ─── MinHasher trait impl (identity) ────────────────────────────────────────
 
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> crate::min_hasher::sealed::Sealed
+    for MinHash<Word, PERMUTATIONS, H, Hash>
+where
+    Word: Ord + Copy + Maximal + Primitive<Hash>,
+    Hash: HashType + Primitive<Word>,
+{
+}
+
 impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, V: CoreHash>
     MinHasher<PERMUTATIONS, V> for MinHash<Word, PERMUTATIONS, H, Hash>
 where
@@ -566,5 +574,9 @@ where
 
     fn to_dense(&self) -> MinHash<Self::Word, PERMUTATIONS, Self::Hasher, Self::Hash> {
         *self
+    }
+
+    fn estimate_jaccard_index(&self, other: &Self) -> f64 {
+        MinHash::estimate_jaccard_index(self, other)
     }
 }

@@ -5,6 +5,7 @@
 extern crate alloc;
 
 pub mod atomic;
+pub(crate) mod batched;
 pub mod from_iter;
 pub mod hasher;
 pub mod hashtype;

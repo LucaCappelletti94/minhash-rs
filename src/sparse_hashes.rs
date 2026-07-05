@@ -18,6 +18,7 @@ use core::hash::Hash as CoreHash;
 
 use serde::{Deserialize, Serialize};
 
+use crate::batched;
 use crate::hasher::{Hasher, SipHashes13};
 use crate::hashtype::HashType;
 use crate::maximal::Maximal;
@@ -449,8 +450,18 @@ where
 {
     fn from_iter<I: IntoIterator<Item = V>>(iter: I) -> Self {
         let mut sketch = SparseHashes::<Word, PERMUTATIONS, H, Hash>::new();
-        for value in iter {
+        let mut iter = iter.into_iter();
+        for value in iter.by_ref() {
             sketch.insert(value);
+            if sketch.is_dense() {
+                break;
+            }
+        }
+        if sketch.is_dense() {
+            batched::build_into::<Word, PERMUTATIONS, H, Hash, V, _>(
+                sketch.inner.as_words_mut(),
+                iter,
+            );
         }
         sketch
     }

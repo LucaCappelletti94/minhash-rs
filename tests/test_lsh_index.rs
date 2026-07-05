@@ -165,3 +165,38 @@ fn candidates_slice_is_valid_until_state_is_reused() {
     assert_eq!(cands_again[0].id, expected_id);
     assert_eq!(owned[0].id, expected_id);
 }
+
+#[test]
+fn non_empty_index_reports_not_empty() {
+    // Defends the `is_empty -> bool with true` mutant. Every existing test
+    // only asserts `is_empty()` on an empty index, which cannot see the
+    // mutation. This one asserts the negative case.
+    let a: MinHash<u64, 128> = (0u64..10).collect();
+    let index: LshIndex<MinHash<u64, 128>, 128, 16, NoStore> = LshIndex::from_signatures([a]);
+    assert!(
+        !index.is_empty(),
+        "index with one signature must not be empty"
+    );
+    assert_eq!(index.len(), 1);
+}
+
+#[test]
+fn query_state_clear_actually_clears_between_calls() {
+    // Defends the `QueryState::clear -> ()` mutant. Two back-to-back
+    // queries on the same state and the same query must return identical
+    // candidate slices. If `clear()` is a no-op, the second call
+    // accumulates a second copy of every collision on top of the first,
+    // which produces a strictly different candidate list.
+    let a: MinHash<u64, 128> = (0u64..10).collect();
+    let index: LshIndex<MinHash<u64, 128>, 128, 16, NoStore> = LshIndex::from_signatures([a]);
+
+    let mut state = QueryState::new();
+    let first: alloc::vec::Vec<Candidate> = index.candidates(&a, &mut state).to_vec();
+    let second: alloc::vec::Vec<Candidate> = index.candidates(&a, &mut state).to_vec();
+
+    assert_eq!(
+        first, second,
+        "reusing QueryState across queries must yield identical results, \
+         which requires clear() to actually clear the internal buffers"
+    );
+}

@@ -138,18 +138,49 @@ impl QueryState {
     }
 }
 
+// ─── BandEntry ─────────────────────────────────────────────────────────────
+
+/// One entry in a band table: the band hash of a signature and the id
+/// that signature was assigned when it was inserted.
+///
+/// `repr(C)` is intentional. The layout is a fixed `(u64, u32)` pair with
+/// four bytes of trailing padding for alignment, which keeps binary
+/// serialization stable and lets the type carry a zero-copy epserde
+/// derive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "epserde", derive(epserde::Epserde))]
+#[cfg_attr(feature = "epserde", epserde(zero_copy))]
+#[repr(C)]
+pub struct BandEntry {
+    /// The signature's hash for this band.
+    pub band_hash: u64,
+    /// The signature's id in this index.
+    pub sig_id: u32,
+}
+
 // ─── LshIndex ──────────────────────────────────────────────────────────────
 
 /// A compile-time banded locality-sensitive hashing index over signatures
 /// of type `K: MinHasher<PERMUTATIONS, u64>`.
 ///
 /// See the [module docs](self) for the query flow and storage semantics.
+///
+/// # Storage layout
+///
+/// The per-band tables live in a compressed sparse row layout: a single
+/// [`Vec<BandEntry>`] holds every band's entries concatenated in band
+/// order and sorted by `band_hash`, and a [`[u32; BANDS]`] array holds
+/// the start offset of each band. The end of band `b` is
+/// `band_starts[b + 1]` for `b + 1 < BANDS` and `band_entries.len()` for
+/// the last band. This shape avoids `BANDS` separate heap allocations
+/// and is directly zero-copy-friendly for `epserde` mmap loads.
 pub struct LshIndex<K, const PERMUTATIONS: usize, const BANDS: usize, S = NoStore>
 where
     K: MinHasher<PERMUTATIONS, u64>,
     S: SigStore<K>,
 {
-    band_tables: [Vec<(u64, u32)>; BANDS],
+    band_starts: [u32; BANDS],
+    band_entries: Vec<BandEntry>,
     signatures: <S as SigStore<K>>::Storage,
     len: u32,
     _marker: PhantomData<S>,
@@ -161,8 +192,8 @@ where
     K::Word: CoreHash,
     S: SigStore<K>,
 {
-    /// Build an index over the given signatures, sorting each band table
-    /// once at the end.
+    /// Build an index over the given signatures, sorting each band's slice
+    /// of the flat entry vector once at the end.
     ///
     /// Signature ids are assigned in the iterator's yield order starting
     /// at zero. `PERMUTATIONS` and `BANDS` are checked at compile time by
@@ -173,15 +204,19 @@ where
     ///
     /// Panics if the iterator yields more than `u32::MAX` signatures.
     pub fn from_signatures<I: IntoIterator<Item = K>>(signatures: I) -> Self {
-        let mut band_tables: [Vec<(u64, u32)>; BANDS] = core::array::from_fn(|_| Vec::new());
+        let iter = signatures.into_iter();
+        let mut band_entries: Vec<BandEntry> = Vec::with_capacity(iter.size_hint().0 * BANDS);
         let mut storage = <<S as SigStore<K>>::Storage>::default();
         let mut len: u32 = 0;
 
-        for sig in signatures {
+        for sig in iter {
             let id = len;
             let hashes = sig.band_hashes::<BANDS>();
-            for (b, &h) in hashes.iter().enumerate() {
-                band_tables[b].push((h, id));
+            for &h in &hashes {
+                band_entries.push(BandEntry {
+                    band_hash: h,
+                    sig_id: id,
+                });
             }
             <S as SigStore<K>>::store(&mut storage, sig);
             len = len
@@ -189,16 +224,42 @@ where
                 .expect("LshIndex holds at most u32::MAX signatures");
         }
 
-        for table in &mut band_tables {
-            table.sort_unstable_by_key(|&(h, _)| h);
-        }
+        // Reorder from row-major (signature, band) to column-major
+        // (band, signature) so each band's entries live contiguously.
+        // We only push the `id` field values in row-major above; before
+        // sorting we bucket by band with a stable scatter.
+        let band_starts = Self::regroup_and_sort(&mut band_entries, len);
 
         Self {
-            band_tables,
+            band_starts,
+            band_entries,
             signatures: storage,
             len,
             _marker: PhantomData,
         }
+    }
+
+    /// Bucket `entries` from `(sig, band)` interleaved order into
+    /// contiguous per-band runs and sort each run by `band_hash`.
+    /// Returns the start offset of each band.
+    fn regroup_and_sort(entries: &mut Vec<BandEntry>, sig_count: u32) -> [u32; BANDS] {
+        let n = sig_count as usize;
+        let band_starts: [u32; BANDS] = core::array::from_fn(|b| (b * n) as u32);
+        if n == 0 {
+            return band_starts;
+        }
+        // Scatter: build a fresh column-major buffer, then swap.
+        let mut regrouped: Vec<BandEntry> = Vec::with_capacity(entries.len());
+        for b in 0..BANDS {
+            for i in 0..n {
+                regrouped.push(entries[i * BANDS + b]);
+            }
+        }
+        *entries = regrouped;
+        for chunk in entries.chunks_mut(n) {
+            chunk.sort_unstable_by_key(|e| e.band_hash);
+        }
+        band_starts
     }
 
     /// Number of signatures currently indexed.
@@ -229,11 +290,11 @@ where
 
         let query_hashes = query.band_hashes::<BANDS>();
         for (b, &qh) in query_hashes.iter().enumerate() {
-            let table = &self.band_tables[b];
-            let start = table.partition_point(|&(h, _)| h < qh);
-            let end = start + table[start..].partition_point(|&(h, _)| h == qh);
-            for &(_, id) in &table[start..end] {
-                state.scratch.push(id);
+            let band = self.band_slice(b);
+            let start = band.partition_point(|e| e.band_hash < qh);
+            let end = start + band[start..].partition_point(|e| e.band_hash == qh);
+            for entry in &band[start..end] {
+                state.scratch.push(entry.sig_id);
             }
         }
 
@@ -260,6 +321,18 @@ where
             });
 
         &state.candidates
+    }
+
+    /// Slice of the flat entry vector holding band `b`'s entries.
+    #[inline]
+    fn band_slice(&self, b: usize) -> &[BandEntry] {
+        let start = self.band_starts[b] as usize;
+        let end = if b + 1 < BANDS {
+            self.band_starts[b + 1] as usize
+        } else {
+            self.band_entries.len()
+        };
+        &self.band_entries[start..end]
     }
 }
 
@@ -289,7 +362,7 @@ where
         I: rayon::iter::IntoParallelIterator<Item = K>,
         <I as rayon::iter::IntoParallelIterator>::Iter: rayon::iter::IndexedParallelIterator,
     {
-        use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
+        use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
         use rayon::slice::ParallelSliceMut;
 
         let signatures: Vec<K> = signatures.into_par_iter().collect();
@@ -303,18 +376,34 @@ where
             .map(MinHasher::band_hashes::<BANDS>)
             .collect();
 
-        let mut band_tables: [Vec<(u64, u32)>; BANDS] =
-            core::array::from_fn(|_| Vec::with_capacity(signatures.len()));
-        for (id, hashes) in all_hashes.iter().enumerate() {
-            let id = id as u32;
-            for (b, &h) in hashes.iter().enumerate() {
-                band_tables[b].push((h, id));
-            }
+        // Build the CSR layout: for each band, scan all signatures'
+        // per-band hash and push into that band's contiguous slice. The
+        // outer `par_iter_mut().enumerate()` runs one band per thread,
+        // each populating its slice from a shared read-only `all_hashes`.
+        let n = signatures.len();
+        let band_starts: [u32; BANDS] = core::array::from_fn(|b| (b * n) as u32);
+        let mut band_entries: Vec<BandEntry> = Vec::with_capacity(n * BANDS);
+        band_entries.resize(
+            n * BANDS,
+            BandEntry {
+                band_hash: 0,
+                sig_id: 0,
+            },
+        );
+        if n > 0 {
+            band_entries
+                .par_chunks_mut(n)
+                .enumerate()
+                .for_each(|(b, slot)| {
+                    for (id, hashes) in all_hashes.iter().enumerate() {
+                        slot[id] = BandEntry {
+                            band_hash: hashes[b],
+                            sig_id: id as u32,
+                        };
+                    }
+                    slot.par_sort_unstable_by_key(|e| e.band_hash);
+                });
         }
-
-        band_tables
-            .par_iter_mut()
-            .for_each(|table| table.par_sort_unstable_by_key(|&(h, _)| h));
 
         let mut storage = <<S as SigStore<K>>::Storage>::default();
         for sig in signatures {
@@ -322,7 +411,8 @@ where
         }
 
         Self {
-            band_tables,
+            band_starts,
+            band_entries,
             signatures: storage,
             len,
             _marker: PhantomData,

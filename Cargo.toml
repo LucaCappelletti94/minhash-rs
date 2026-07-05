@@ -59,6 +59,10 @@ alloc = []
 # Enables parallel bulk build for `LshIndex`. Pulls in `rayon`. Implies
 # `alloc` because the index itself already needs it.
 rayon = ["dep:rayon", "alloc"]
+# Enables save and mmap load for `LshIndex`, `MinHash`, `SparseHashes`,
+# and `SparseValues`. Pulls in `epserde` with its mmap backend. Implies
+# `alloc`.
+epserde = ["dep:epserde", "alloc"]
 
 
 [dependencies]
@@ -69,6 +73,7 @@ serde-big-array = "0.5"
 sketching-core = "0.1"
 dsi-bitstream = { version = "0.9", default-features = false }
 rayon = { version = "1.10", optional = true }
+epserde = { version = "0.12", optional = true, default-features = false, features = ["derive", "mmap", "std"] }
 
 [dev-dependencies]
 criterion = "0.8"

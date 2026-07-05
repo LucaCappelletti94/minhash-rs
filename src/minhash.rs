@@ -389,11 +389,6 @@ where
         }
         Some(w)
     }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.remaining, Some(self.remaining))
-    }
 }
 
 /// Fold the permutation stream seeded by `seed` into the target signature
@@ -408,9 +403,7 @@ where
         .iter_mut()
         .zip(HashStream::<Word, Hash>::new(seed, P))
     {
-        if w < *word {
-            *word = w;
-        }
+        *word = w.min(*word);
     }
 }
 

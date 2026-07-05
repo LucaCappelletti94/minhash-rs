@@ -26,6 +26,7 @@ use sketching_core::sparse_value_list::{
     CodeLen, ConstCode, DynamicCodeRead, DynamicCodeWrite, ValueInsertion, ValueIter, BE,
 };
 
+use crate::batched;
 use crate::hasher::{Hasher, SipHashes13};
 use crate::hashtype::HashType;
 use crate::min_hasher::{MinHasher, Outcome};
@@ -507,8 +508,18 @@ where
 {
     fn from_iter<I: IntoIterator<Item = u64>>(iter: I) -> Self {
         let mut sketch = SparseValues::<PERMUTATIONS, H, Hash, Code>::new();
-        for value in iter {
+        let mut iter = iter.into_iter();
+        for value in iter.by_ref() {
             sketch.insert(value);
+            if sketch.is_dense() {
+                break;
+            }
+        }
+        if sketch.is_dense() {
+            batched::build_into::<u64, PERMUTATIONS, H, Hash, u64, _>(
+                sketch.inner.as_words_mut(),
+                iter,
+            );
         }
         sketch
     }

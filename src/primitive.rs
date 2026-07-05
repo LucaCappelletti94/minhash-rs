@@ -29,7 +29,23 @@ use crate::hashtype::HashType;
 /// Whether a specific impl is lossy depends on the pair; the caller is
 /// responsible for using an impl in a context where the round-trip is
 /// meaningful.
-pub trait Primitive<T> {
+pub trait Primitive<T>: Sized {
+    /// True when the `as`-cast from `Self` to `T` preserves every bit
+    /// that matters. It is `true` for identity conversions
+    /// (`u64 -> u64`, `u32 -> u32`, ...) and for pure widenings
+    /// (`u32 -> u64`, `u8 -> u32`, ...). It is `false` for narrowings
+    /// (`u64 -> u32`, `u64 -> u16`, ...), where the high bits are
+    /// discarded and a nonzero source can produce a zero target.
+    ///
+    /// The batched build path used by `FromIterator` uses this to skip
+    /// the phase 2 word-level zero guard whenever the narrow is
+    /// provably not needed.
+    ///
+    /// Default computed from `size_of`: an impl only needs to override
+    /// this when the target width is not the plain integer width of the
+    /// `as`-cast (never the case for the impls in this crate).
+    const IS_LOSSLESS: bool = core::mem::size_of::<T>() >= core::mem::size_of::<Self>();
+
     /// Convert `self` into the target width via an [`as`]-cast.
     fn convert(self) -> T;
 }

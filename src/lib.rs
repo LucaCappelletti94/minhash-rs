@@ -1,10 +1,15 @@
 #![doc = include_str!("../README.md")]
 #![no_std]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 pub mod atomic;
 pub mod from_iter;
 pub mod hasher;
 pub mod hashtype;
+#[cfg(feature = "alloc")]
+pub mod index;
 pub mod lsh;
 pub mod maximal;
 pub mod min_hasher;
@@ -21,6 +26,8 @@ pub mod prelude {
     pub use crate::atomic::*;
     pub use crate::hasher::*;
     pub use crate::hashtype::{HashType, SparseArithmetic};
+    #[cfg(feature = "alloc")]
+    pub use crate::index::{Candidate, LshIndex, NoStore, QueryState, SigStore, Store};
     pub use crate::lsh::*;
     pub use crate::maximal::Maximal;
     pub use crate::min_hasher::{MinHasher, Outcome};

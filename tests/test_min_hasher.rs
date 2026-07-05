@@ -150,3 +150,22 @@ fn minhasher_trait_may_contain_dispatches_for_minhash() {
         );
     }
 }
+
+#[test]
+fn minhash_trait_to_dense_returns_populated_sketch_not_default() {
+    // Defends the `<MinHash as MinHasher>::to_dense -> Default::default()`
+    // mutant. The trait impl on `MinHash` is the identity (`*self`), so
+    // the result must equal the input, and it must not equal the fresh
+    // default sketch when the input was populated.
+    let mh: MinHash<u64, 128> = (0u64..30).collect();
+    let trait_dense = <MinHash<u64, 128> as MinHasher<128, u64>>::to_dense(&mh);
+    assert_eq!(
+        trait_dense, mh,
+        "MinHash trait to_dense must be the identity, not Default::default()"
+    );
+    let default = MinHash::<u64, 128>::default();
+    assert_ne!(
+        trait_dense, default,
+        "MinHash trait to_dense on a populated sketch must not return the default (empty) sketch"
+    );
+}

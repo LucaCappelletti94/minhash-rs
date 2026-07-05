@@ -49,6 +49,14 @@ cast_precision_loss = "allow"
 # The atomic view in `as_atomic` is an audited &mut [Word] -> &[Atomic] reinterpret.
 transmute_ptr_to_ptr = "allow"
 
+[features]
+default = ["alloc"]
+# Enables allocator-backed types: `LshIndex` (banded LSH over `MinHasher`),
+# `QueryState`, and any future surface that needs `Vec`. The core sketch
+# operations (`insert`, `may_contain`, `estimate_jaccard_index`,
+# `band_hashes`) do NOT require this feature.
+alloc = []
+
 
 [dependencies]
 siphasher = { version = "1.0", default-features = false }

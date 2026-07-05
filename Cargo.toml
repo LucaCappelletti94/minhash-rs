@@ -56,6 +56,9 @@ default = ["alloc"]
 # operations (`insert`, `may_contain`, `estimate_jaccard_index`,
 # `band_hashes`) do NOT require this feature.
 alloc = []
+# Enables parallel bulk build for `LshIndex`. Pulls in `rayon`. Implies
+# `alloc` because the index itself already needs it.
+rayon = ["dep:rayon", "alloc"]
 
 
 [dependencies]
@@ -65,6 +68,7 @@ serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde-big-array = "0.5"
 sketching-core = "0.1"
 dsi-bitstream = { version = "0.9", default-features = false }
+rayon = { version = "1.10", optional = true }
 
 [dev-dependencies]
 criterion = "0.8"

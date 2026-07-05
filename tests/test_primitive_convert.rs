@@ -137,3 +137,42 @@ fn convert_from_usize() {
     // Boundary: max (truncates to u32::MAX on 64-bit)
     assert_eq!(<usize as Primitive<u32>>::convert(usize::MAX), u32::MAX);
 }
+
+/// Pin the `IS_LOSSLESS` const for every impl in the crate. Any change
+/// to the default computation on the trait, or to any impl's override,
+/// flips at least one of these asserts and the crate stops compiling.
+#[test]
+fn is_lossless_matches_width_relation() {
+    // Identity: always lossless.
+    const _: () = assert!(<u64 as Primitive<u64>>::IS_LOSSLESS);
+    const _: () = assert!(<u32 as Primitive<u32>>::IS_LOSSLESS);
+
+    // Widening: lossless.
+    const _: () = assert!(<u32 as Primitive<u64>>::IS_LOSSLESS);
+    const _: () = assert!(<u32 as Primitive<usize>>::IS_LOSSLESS);
+    const _: () = assert!(<u8 as Primitive<u32>>::IS_LOSSLESS);
+    const _: () = assert!(<u8 as Primitive<u64>>::IS_LOSSLESS);
+    const _: () = assert!(<u16 as Primitive<u32>>::IS_LOSSLESS);
+    const _: () = assert!(<u16 as Primitive<u64>>::IS_LOSSLESS);
+
+    // Narrowing: not lossless.
+    const _: () = assert!(!<u64 as Primitive<u8>>::IS_LOSSLESS);
+    const _: () = assert!(!<u64 as Primitive<u16>>::IS_LOSSLESS);
+    const _: () = assert!(!<u64 as Primitive<u32>>::IS_LOSSLESS);
+    const _: () = assert!(!<u32 as Primitive<u8>>::IS_LOSSLESS);
+    const _: () = assert!(!<u32 as Primitive<u16>>::IS_LOSSLESS);
+
+    // `usize`: width depends on target. Assert relative to `u64`.
+    #[cfg(target_pointer_width = "64")]
+    const _: () = {
+        assert!(<usize as Primitive<u64>>::IS_LOSSLESS);
+        assert!(!<usize as Primitive<u32>>::IS_LOSSLESS);
+        assert!(<u64 as Primitive<usize>>::IS_LOSSLESS);
+    };
+    #[cfg(not(target_pointer_width = "64"))]
+    const _: () = {
+        assert!(<usize as Primitive<u64>>::IS_LOSSLESS);
+        assert!(<usize as Primitive<u32>>::IS_LOSSLESS);
+        assert!(!<u64 as Primitive<usize>>::IS_LOSSLESS);
+    };
+}

@@ -101,26 +101,16 @@ where
             let w1: Word = maybe_guard::<Word, Hash>(x1.convert(), zero_word, one_word);
             let w2: Word = maybe_guard::<Word, Hash>(x2.convert(), zero_word, one_word);
             let w3: Word = maybe_guard::<Word, Hash>(x3.convert(), zero_word, one_word);
-            if w0 < a {
-                a = w0;
-            }
-            if w1 < b {
-                b = w1;
-            }
-            if w2 < c {
-                c = w2;
-            }
-            if w3 < d {
-                d = w3;
-            }
+            a = w0.min(a);
+            b = w1.min(b);
+            c = w2.min(c);
+            d = w3.min(d);
         }
         for tail in chunks.into_remainder() {
             let x = tail.xorshift();
             *tail = x;
             let w: Word = maybe_guard::<Word, Hash>(x.convert(), zero_word, one_word);
-            if w < a {
-                a = w;
-            }
+            a = w.min(a);
         }
         *word = a.min(b).min(c).min(d);
     }
@@ -162,24 +152,18 @@ where
     I: IntoIterator<Item = V>,
 {
     let mut buf = [Hash::ZERO; CHUNK];
-    let mut iter = iter.into_iter();
-    loop {
-        let mut n = 0usize;
-        for slot in &mut buf {
-            let Some(v) = iter.next() else { break };
-            let mut s = hash_value::<H, Hash, V>(v).splitmix().splitmix();
-            if s == Hash::ZERO {
-                s = Hash::ONE;
-            }
-            *slot = s;
-            n += 1;
+    let mut n = 0usize;
+    for v in iter {
+        let mut s = hash_value::<H, Hash, V>(v).splitmix().splitmix();
+        if s == Hash::ZERO {
+            s = Hash::ONE;
         }
-        if n == 0 {
-            break;
-        }
-        phase2_reduce::<Word, P, Hash>(words, &mut buf[..n]);
-        if n < CHUNK {
-            break;
+        buf[n] = s;
+        n += 1;
+        if n == CHUNK {
+            phase2_reduce::<Word, P, Hash>(words, &mut buf);
+            n = 0;
         }
     }
+    phase2_reduce::<Word, P, Hash>(words, &mut buf[..n]);
 }

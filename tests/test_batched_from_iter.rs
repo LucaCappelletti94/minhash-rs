@@ -60,6 +60,39 @@ fn minhash_p128_from_iter_matches_insert_loop() {
     minhash_equivalence::<128>();
 }
 
+/// Narrow-`Word` config: `Word = u32`, `Hash = u64`. Exercises the
+/// non-lossless narrow path in the batched build: `Primitive<u32>` on
+/// `u64` returns `IS_LOSSLESS = false`, so `maybe_guard` keeps its word
+/// guard, and a narrowing xorshift step can produce a zero low half of a
+/// nonzero digest that the guard has to lift back to `one`.
+fn minhash_narrow_word_equivalence<const P: usize>() {
+    for &size in &SIZES {
+        let values = gen_values(size, 42);
+        let batched: MinHash<u32, P, SipHashes13, u64> = values.iter().copied().collect();
+
+        let mut reference = MinHash::<u32, P, SipHashes13, u64>::new();
+        for &v in &values {
+            reference.insert(v);
+        }
+
+        assert_eq!(
+            batched.as_words(),
+            reference.as_words(),
+            "MinHash<u32, {P}, SipHashes13, u64>: batched from_iter must match insert loop at size {size}"
+        );
+    }
+}
+
+#[test]
+fn minhash_narrow_word_p64_from_iter_matches_insert_loop() {
+    minhash_narrow_word_equivalence::<64>();
+}
+
+#[test]
+fn minhash_narrow_word_p128_from_iter_matches_insert_loop() {
+    minhash_narrow_word_equivalence::<128>();
+}
+
 // ─── SparseHashes ───────────────────────────────────────────────────────────
 
 fn sparse_hashes_equivalence<const P: usize>() {

@@ -91,3 +91,27 @@ let dense: MinHash<u64, 128> = sketch.into();
 #### Sparse-mode semantics
 
 Sparse-mode Jaccard is exact on the retained set (digests for `SparseHashes`, raw values for `SparseValues`), not on the original input elements: ordinary hash collisions and (for `SparseHashes`) the `saturating_add(1)` encoding collision at `Hash::MAX` still count. Densification is a deterministic latency spike on the specific insert that triggers overflow, paying `O(PERMUTATIONS * PERMUTATIONS)` on that record before every subsequent insert returns to the from-scratch dense cost of `O(PERMUTATIONS)`. Real-time streaming callers who need smooth tail latency should either pre-densify with `MinHash::new()` or budget the spike explicitly.
+
+### LSH indexing
+
+The `alloc` feature (on by default) exposes `LshIndex`, a compile-time banded LSH index over any `MinHasher`. The index stores one sorted `Vec<(band_hash, id)>` per band and returns candidate ids ranked by descending collision count, so callers can cheaply cap the refine pass at whatever depth the S-curve demands.
+
+```rust
+use minhash_rs::prelude::*;
+
+let a: MinHash<u64, 128> = (0u64..30).collect();
+let b: MinHash<u64, 128> = (15u64..45).collect();
+let c: MinHash<u64, 128> = (200u64..230).collect();
+
+let index: LshIndex<MinHash<u64, 128>, 128, 16, Store> =
+    LshIndex::from_signatures([a, b, c]);
+
+let mut state = QueryState::new();
+let hits = index.top_k(&a, 2, &mut state);
+assert_eq!(hits[0].0, 0);
+assert!((hits[0].1 - 1.0).abs() < 1e-9);
+```
+
+Type-level signature storage. `LshIndex<K, P, BANDS, Store>` keeps a `Vec<K>` alongside the band tables and unlocks `signature(id)` and `top_k(query, k, state)`. `LshIndex<K, P, BANDS, NoStore>` (the default) drops signatures after computing their band hashes and leaves refinement to the caller, which is what production builds at 10M-plus want since the signature `Vec` dominates memory well before the band tables do. The marker is a zero-sized type parameter, so the two variants share the same runtime code path apart from the storage cost.
+
+Zero-alloc query hot path. `candidates` and `top_k` take a caller-owned `QueryState` scratch. Reusing the same state across many queries pins the internal buffers to their steady-state size and removes all per-query heap allocation. Compile-time `BANDS` means the per-band loop unrolls and the band-tables array is a fixed-size `[Vec<(u64, u32)>; BANDS]` instead of a heap `Vec<Vec<_>>`.

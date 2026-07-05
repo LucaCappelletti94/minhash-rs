@@ -263,6 +263,73 @@ where
     }
 }
 
+#[cfg(feature = "rayon")]
+impl<K, const PERMUTATIONS: usize, const BANDS: usize, S> LshIndex<K, PERMUTATIONS, BANDS, S>
+where
+    K: MinHasher<PERMUTATIONS, u64> + Send + Sync,
+    K::Word: CoreHash,
+    S: SigStore<K>,
+{
+    /// Parallel counterpart to [`Self::from_signatures`].
+    ///
+    /// Computes every signature's [`MinHasher::band_hashes`] in parallel,
+    /// sorts each per-band table in parallel, and preserves the same id
+    /// assignment as the sequential build (input order maps one-to-one to
+    /// signature ids). Available when the `rayon` feature is enabled.
+    ///
+    /// Prefer this on multi-core builds at scale; on a small input the
+    /// per-thread setup cost outweighs the sort win and the sequential
+    /// build is faster.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the input yields more than `u32::MAX` signatures.
+    pub fn from_signatures_par<I>(signatures: I) -> Self
+    where
+        I: rayon::iter::IntoParallelIterator<Item = K>,
+        <I as rayon::iter::IntoParallelIterator>::Iter: rayon::iter::IndexedParallelIterator,
+    {
+        use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
+        use rayon::slice::ParallelSliceMut;
+
+        let signatures: Vec<K> = signatures.into_par_iter().collect();
+        let len: u32 = signatures
+            .len()
+            .try_into()
+            .expect("LshIndex holds at most u32::MAX signatures");
+
+        let all_hashes: Vec<[u64; BANDS]> = signatures
+            .par_iter()
+            .map(MinHasher::band_hashes::<BANDS>)
+            .collect();
+
+        let mut band_tables: [Vec<(u64, u32)>; BANDS] =
+            core::array::from_fn(|_| Vec::with_capacity(signatures.len()));
+        for (id, hashes) in all_hashes.iter().enumerate() {
+            let id = id as u32;
+            for (b, &h) in hashes.iter().enumerate() {
+                band_tables[b].push((h, id));
+            }
+        }
+
+        band_tables
+            .par_iter_mut()
+            .for_each(|table| table.par_sort_unstable_by_key(|&(h, _)| h));
+
+        let mut storage = <<S as SigStore<K>>::Storage>::default();
+        for sig in signatures {
+            <S as SigStore<K>>::store(&mut storage, sig);
+        }
+
+        Self {
+            band_tables,
+            signatures: storage,
+            len,
+            _marker: PhantomData,
+        }
+    }
+}
+
 // ─── Store-only methods ────────────────────────────────────────────────────
 
 impl<K, const PERMUTATIONS: usize, const BANDS: usize> LshIndex<K, PERMUTATIONS, BANDS, Store>

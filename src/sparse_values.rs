@@ -15,6 +15,7 @@
 //! `words[0] != 0` selects dense mode and every operation delegates to the
 //! inner `MinHash`.
 
+use core::hash::Hash as CoreHash;
 use core::marker::PhantomData;
 
 use dsi_bitstream::prelude::{
@@ -30,7 +31,7 @@ use crate::batched;
 use crate::hasher::{Hasher, SipHashes13};
 use crate::hashtype::HashType;
 use crate::min_hasher::{MinHasher, Outcome};
-use crate::minhash::MinHash;
+use crate::minhash::{dense_jaccard, MinHash};
 use crate::primitive::Primitive;
 
 /// Bit budget of the sparse-mode tail (`words[1..]` viewed as bits).
@@ -314,10 +315,53 @@ where
             u64::from(count),
         );
     }
+}
 
-    /// Insert a value into the sketch. See [`Outcome`] for the return
-    /// contract.
-    pub fn insert(&mut self, value: u64) -> Outcome {
+// ─── From<SparseValues> for MinHash ─────────────────────────────────────────
+
+impl<const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Code>
+    From<SparseValues<PERMUTATIONS, H, Hash, Code>> for MinHash<u64, PERMUTATIONS, H, Hash, u64>
+where
+    Hash: HashType + Primitive<u64>,
+    u64: Primitive<Hash>,
+    Code: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
+    for<'r> BufBitReader<BE, MemWordReader<u64, &'r [u64], true>>:
+        CodesRead<BE> + BitSeek + BitRead<BE>,
+    for<'w> BufBitWriter<BE, MemWordWriterSlice<u64, &'w mut [u64]>>: CodesWrite<BE> + BitWrite<BE>,
+{
+    fn from(mut sparse: SparseValues<PERMUTATIONS, H, Hash, Code>) -> Self {
+        <SparseValues<PERMUTATIONS, H, Hash, Code> as MinHasher<PERMUTATIONS>>::densify(
+            &mut sparse,
+        );
+        sparse.inner
+    }
+}
+
+impl<const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Code> crate::min_hasher::sealed::Sealed
+    for SparseValues<PERMUTATIONS, H, Hash, Code>
+where
+    Hash: Primitive<u64>,
+{
+}
+
+// ─── MinHasher trait impl ───────────────────────────────────────────────────
+
+impl<const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Code> MinHasher<PERMUTATIONS>
+    for SparseValues<PERMUTATIONS, H, Hash, Code>
+where
+    Hash: HashType + Primitive<u64>,
+    u64: Primitive<Hash>,
+    Code: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
+    for<'r> BufBitReader<BE, MemWordReader<u64, &'r [u64], true>>:
+        CodesRead<BE> + BitSeek + BitRead<BE>,
+    for<'w> BufBitWriter<BE, MemWordWriterSlice<u64, &'w mut [u64]>>: CodesWrite<BE> + BitWrite<BE>,
+{
+    type Word = u64;
+    type Hash = Hash;
+    type Hasher = H;
+    type Value = u64;
+
+    fn insert(&mut self, value: u64) -> Outcome {
         if self.is_sparse() {
             let count = self.count();
             let code = Self::code();
@@ -335,20 +379,18 @@ where
                 }
                 ValueInsertion::Duplicate => Outcome::Duplicate,
                 ValueInsertion::DoesNotFit => {
-                    self.densify();
-                    MinHash::insert(&mut self.inner, value);
+                    <Self as MinHasher<PERMUTATIONS>>::densify(self);
+                    self.inner.insert(value);
                     Outcome::Promoted
                 }
             }
         } else {
-            MinHash::insert(&mut self.inner, value);
+            self.inner.insert(value);
             Outcome::Inserted
         }
     }
 
-    /// Returns whether the sketch may contain `value`.
-    #[must_use]
-    pub fn may_contain(&self, value: u64) -> bool {
+    fn may_contain(&self, value: u64) -> bool {
         if self.is_sparse() {
             let count = self.count();
             contains_value::<BE, Code>(
@@ -363,14 +405,12 @@ where
         }
     }
 
-    /// Force the sketch into dense mode in place. No-op on already-dense
-    /// sketches.
-    pub fn densify(&mut self) {
+    fn densify(&mut self) {
         if !self.is_sparse() {
             return;
         }
         let count = self.count();
-        let mut mh = MinHash::<u64, PERMUTATIONS, H, Hash>::new();
+        let mut mh = MinHash::<u64, PERMUTATIONS, H, Hash, u64>::new();
         {
             let tail: &[u8] = self.tail_bytes();
             let iter = ValueIter::<BE, Code>::new(tail, Self::PREAMBLE_BITS, count, Self::code());
@@ -381,9 +421,7 @@ where
         self.inner = mh;
     }
 
-    /// Estimate the Jaccard similarity between two `SparseValues` sketches.
-    #[must_use]
-    pub fn estimate_jaccard_index(&self, other: &Self) -> f64 {
+    fn estimate_jaccard_index(&self, other: &Self) -> f64 {
         if let (true, true) = (self.is_sparse(), other.is_sparse()) {
             let a_count = self.count();
             let b_count = other.count();
@@ -402,82 +440,18 @@ where
             let intersection = u64::from(a_count) + u64::from(b_count) - u64::from(union);
             intersection as f64 / f64::from(union)
         } else {
-            let mut a = *self;
-            let mut b = *other;
-            a.densify();
-            b.densify();
-            a.inner.estimate_jaccard_index(&b.inner)
+            let dense_a: MinHash<u64, PERMUTATIONS, H, Hash, u64> = (*self).into();
+            let dense_b: MinHash<u64, PERMUTATIONS, H, Hash, u64> = (*other).into();
+            dense_jaccard::<u64, PERMUTATIONS>(dense_a.as_words(), dense_b.as_words())
         }
     }
 
-    /// Consume the sketch and return the equivalent dense [`MinHash`].
-    #[must_use]
-    pub fn into_minhash(mut self) -> MinHash<u64, PERMUTATIONS, H, Hash> {
-        self.densify();
-        self.inner
-    }
-}
-
-// ─── From<SparseValues> for MinHash ─────────────────────────────────────────
-
-impl<const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Code>
-    From<SparseValues<PERMUTATIONS, H, Hash, Code>> for MinHash<u64, PERMUTATIONS, H, Hash>
-where
-    Hash: Primitive<u64>,
-    u64: Primitive<Hash>,
-    Code: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
-    for<'r> BufBitReader<BE, MemWordReader<u64, &'r [u64], true>>:
-        CodesRead<BE> + BitSeek + BitRead<BE>,
-    for<'w> BufBitWriter<BE, MemWordWriterSlice<u64, &'w mut [u64]>>: CodesWrite<BE> + BitWrite<BE>,
-{
-    fn from(sparse: SparseValues<PERMUTATIONS, H, Hash, Code>) -> Self {
-        sparse.into_minhash()
-    }
-}
-
-impl<const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Code> crate::min_hasher::sealed::Sealed
-    for SparseValues<PERMUTATIONS, H, Hash, Code>
-where
-    Hash: Primitive<u64>,
-{
-}
-
-// ─── MinHasher trait impl ───────────────────────────────────────────────────
-
-impl<const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Code> MinHasher<PERMUTATIONS, u64>
-    for SparseValues<PERMUTATIONS, H, Hash, Code>
-where
-    Hash: HashType + Primitive<u64>,
-    u64: Primitive<Hash>,
-    Code: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
-    for<'r> BufBitReader<BE, MemWordReader<u64, &'r [u64], true>>:
-        CodesRead<BE> + BitSeek + BitRead<BE>,
-    for<'w> BufBitWriter<BE, MemWordWriterSlice<u64, &'w mut [u64]>>: CodesWrite<BE> + BitWrite<BE>,
-{
-    type Word = u64;
-    type Hash = Hash;
-    type Hasher = H;
-
-    fn insert(&mut self, value: u64) -> Outcome {
-        SparseValues::insert(self, value)
-    }
-
-    fn may_contain(&self, value: u64) -> bool {
-        SparseValues::may_contain(self, value)
-    }
-
-    fn densify(&mut self) {
-        SparseValues::densify(self);
-    }
-
-    fn to_dense(&self) -> MinHash<Self::Word, PERMUTATIONS, Self::Hasher, Self::Hash> {
-        let mut cloned = *self;
-        cloned.densify();
-        cloned.inner
-    }
-
-    fn estimate_jaccard_index(&self, other: &Self) -> f64 {
-        SparseValues::estimate_jaccard_index(self, other)
+    fn band_hashes<const BANDS: usize>(&self) -> [u64; BANDS]
+    where
+        Self::Word: CoreHash,
+    {
+        let dense: MinHash<u64, PERMUTATIONS, H, Hash, u64> = (*self).into();
+        crate::lsh::dense_band_hashes(dense.as_words())
     }
 }
 

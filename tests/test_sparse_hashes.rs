@@ -76,12 +76,14 @@ fn sparse_sparse_jaccard_is_exact() {
 fn minhasher_trait_impl_agrees_with_inherent() {
     let mut sparse = SparseHashes::<u64, 128>::new();
     for v in 0u64..30 {
-        <SparseHashes<u64, 128> as MinHasher<128, u64>>::insert(&mut sparse, v);
+        <SparseHashes<u64, 128> as MinHasher<128>>::insert(&mut sparse, v);
     }
     for v in 0u64..30 {
-        assert!(<SparseHashes<u64, 128> as MinHasher<128, u64>>::may_contain(&sparse, v,));
+        assert!(<SparseHashes<u64, 128> as MinHasher<128>>::may_contain(
+            &sparse, v,
+        ));
     }
-    let dense = <SparseHashes<u64, 128> as MinHasher<128, u64>>::to_dense(&sparse);
+    let dense: MinHash<u64, 128> = MinHash::from(sparse);
     for v in 0u64..30 {
         assert!(dense.may_contain(v));
     }
@@ -93,11 +95,11 @@ fn minhasher_trait_may_contain_rejects_absent_values() {
     // never inserted must not be reported present.
     let mut sparse = SparseHashes::<u64, 128>::new();
     for v in 0u64..30 {
-        <SparseHashes<u64, 128> as MinHasher<128, u64>>::insert(&mut sparse, v);
+        <SparseHashes<u64, 128> as MinHasher<128>>::insert(&mut sparse, v);
     }
     for v in 200u64..230 {
         assert!(
-            !<SparseHashes<u64, 128> as MinHasher<128, u64>>::may_contain(&sparse, v),
+            !<SparseHashes<u64, 128> as MinHasher<128>>::may_contain(&sparse, v),
             "value {v} was never inserted, may_contain must return false"
         );
     }
@@ -112,7 +114,7 @@ fn minhasher_trait_densify_flips_mode() {
         sparse.insert(v);
     }
     assert!(sparse.is_sparse());
-    <SparseHashes<u64, 128> as MinHasher<128, u64>>::densify(&mut sparse);
+    <SparseHashes<u64, 128> as MinHasher<128>>::densify(&mut sparse);
     assert!(sparse.is_dense());
     assert!(!sparse.is_sparse());
 }
@@ -164,7 +166,7 @@ fn trait_band_hashes_matches_inherent_on_densified_signature() {
     }
 
     let trait_hashes: [u64; 16] =
-        <SparseHashes<u64, 128> as MinHasher<128, u64>>::band_hashes::<16>(&sparse);
+        <SparseHashes<u64, 128> as MinHasher<128>>::band_hashes::<16>(&sparse);
     let dense: MinHash<u64, 128> = sparse.into();
     let inherent_hashes: [u64; 16] = dense.band_hashes::<16>();
 

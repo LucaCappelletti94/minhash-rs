@@ -13,7 +13,7 @@ fn bench_minhash_insert_with_siphashes13(b: &mut Bencher) {
     b.iter(|| {
         let mut minhash: MinHash<u64, 128> = MinHash::new();
         for i in 0..NUMBER_OF_ELEMENTS {
-            minhash.insert(black_box(i));
+            minhash.insert(black_box(i as u64));
         }
         black_box(minhash)
     });
@@ -24,7 +24,7 @@ fn bench_minhash_insert_with_fnv(b: &mut Bencher) {
     b.iter(|| {
         let mut minhash: MinHash<u64, 128, Fnv> = MinHash::new();
         for i in 0..NUMBER_OF_ELEMENTS {
-            minhash.insert(black_box(i));
+            minhash.insert(black_box(i as u64));
         }
         black_box(minhash)
     });

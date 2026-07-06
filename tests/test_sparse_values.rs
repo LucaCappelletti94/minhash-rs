@@ -129,8 +129,8 @@ fn trait_insert_state_equivalent_to_minhash_on_u64() {
     let mut sparse: SparseValues<128> = SparseValues::new();
     let mut dense: MinHash<u64, 128> = MinHash::new();
     for &v in &values {
-        <SparseValues<128> as MinHasher<128, u64>>::insert(&mut sparse, v);
-        <MinHash<u64, 128> as MinHasher<128, u64>>::insert(&mut dense, v);
+        <SparseValues<128> as MinHasher<128>>::insert(&mut sparse, v);
+        <MinHash<u64, 128> as MinHasher<128>>::insert(&mut dense, v);
     }
 
     let promoted: MinHash<u64, 128> = sparse.into();
@@ -225,7 +225,7 @@ fn may_contain_dense_fallback_matches_minhash() {
 }
 
 #[test]
-fn into_minhash_consumes_and_densifies() {
+fn from_consumes_and_densifies() {
     let mut sv = SparseValues::<128>::new();
     let values: alloc::vec::Vec<u64> = (0u64..64).collect();
     for &v in &values {
@@ -235,8 +235,8 @@ fn into_minhash_consumes_and_densifies() {
     // Still sparse before conversion
     assert!(sv.is_sparse());
 
-    // into_minhash consumes and produces a dense MinHash
-    let mh = sv.into_minhash();
+    // MinHash::from consumes and produces a dense MinHash
+    let mh = MinHash::from(sv);
     assert!(mh.is_full());
     for &v in &values {
         assert!(
@@ -306,7 +306,7 @@ fn minhasher_trait_impl_dispatches_to_inherent() {
     // Trait-driven sketch
     let mut trait_sv: SparseValues<128> = SparseValues::new();
     for &v in &values {
-        <SparseValues<128> as MinHasher<128, u64>>::insert(&mut trait_sv, v);
+        <SparseValues<128> as MinHasher<128>>::insert(&mut trait_sv, v);
     }
 
     // Inherent-method sketch on the same input
@@ -318,7 +318,7 @@ fn minhasher_trait_impl_dispatches_to_inherent() {
     // may_contain via trait matches inherent for inserted values
     for &v in &values {
         assert_eq!(
-            <SparseValues<128> as MinHasher<128, u64>>::may_contain(&trait_sv, v),
+            <SparseValues<128> as MinHasher<128>>::may_contain(&trait_sv, v),
             inherent_sv.may_contain(v),
             "trait may_contain must match inherent for value {v}"
         );
@@ -328,7 +328,7 @@ fn minhasher_trait_impl_dispatches_to_inherent() {
     // must not be reported present.
     for v in 10_000u64..10_030 {
         assert!(
-            !<SparseValues<128> as MinHasher<128, u64>>::may_contain(&trait_sv, v),
+            !<SparseValues<128> as MinHasher<128>>::may_contain(&trait_sv, v),
             "trait may_contain must reject never-inserted value {v}"
         );
     }
@@ -337,28 +337,15 @@ fn minhasher_trait_impl_dispatches_to_inherent() {
     // sketch must be in dense mode. If densify is a no-op the sketch stays
     // sparse and this assertion fires.
     assert!(trait_sv.is_sparse());
-    <SparseValues<128> as MinHasher<128, u64>>::densify(&mut trait_sv);
+    <SparseValues<128> as MinHasher<128>>::densify(&mut trait_sv);
     assert!(trait_sv.is_dense());
     inherent_sv.densify();
-    let trait_dense = <SparseValues<128> as MinHasher<128, u64>>::to_dense(&trait_sv);
-    let inherent_dense = inherent_sv.into_minhash();
+    let trait_dense: MinHash<u64, 128> = MinHash::from(trait_sv);
+    let inherent_dense: MinHash<u64, 128> = MinHash::from(inherent_sv);
     assert_eq!(
         trait_dense.as_words(),
         inherent_dense.as_words(),
         "trait densify must produce bit-identical state to inherent densify"
-    );
-
-    // to_dense via trait matches into_minhash on a fresh copy
-    let mut fresh_sv: SparseValues<128> = SparseValues::new();
-    for &v in &values {
-        fresh_sv.insert(v);
-    }
-    let trait_dense = <SparseValues<128> as MinHasher<128, u64>>::to_dense(&fresh_sv);
-    let inherent_dense = fresh_sv.into_minhash();
-    assert_eq!(
-        trait_dense.as_words(),
-        inherent_dense.as_words(),
-        "trait to_dense must match into_minhash"
     );
 }
 
@@ -392,18 +379,16 @@ fn from_iterator_matches_new_plus_insert_loop() {
 
 #[test]
 fn trait_band_hashes_matches_inherent_on_densified_signature() {
-    // Defends the sealed default `band_hashes::<BANDS>()` on `MinHasher`:
-    // the trait output must equal `MinHash::band_hashes::<BANDS>()` on the
-    // densified signature, which is what the default body computes.
+    // Defends the `band_hashes::<BANDS>()` on `MinHasher`: the trait output
+    // must equal `MinHash::band_hashes::<BANDS>()` on the densified signature.
     let values: alloc::vec::Vec<u64> = (0u64..30).collect();
     let mut sparse: SparseValues<128> = SparseValues::new();
     for &v in &values {
         sparse.insert(v);
     }
 
-    let trait_hashes: [u64; 16] =
-        <SparseValues<128> as MinHasher<128, u64>>::band_hashes::<16>(&sparse);
-    let inherent_hashes: [u64; 16] = sparse.to_dense().band_hashes::<16>();
+    let trait_hashes: [u64; 16] = <SparseValues<128> as MinHasher<128>>::band_hashes::<16>(&sparse);
+    let inherent_hashes: [u64; 16] = MinHash::from(sparse).band_hashes::<16>();
 
     assert_eq!(
         trait_hashes, inherent_hashes,
@@ -432,7 +417,7 @@ fn sparse_sparse_trait_takes_fast_path_via_true_jaccard() {
     assert!(sa.is_sparse());
     assert!(sb.is_sparse());
 
-    let trait_result = <SparseValues<128> as MinHasher<128, u64>>::estimate_jaccard_index(&sa, &sb);
+    let trait_result = <SparseValues<128> as MinHasher<128>>::estimate_jaccard_index(&sa, &sb);
 
     let a_set: alloc::collections::BTreeSet<u64> = a_values.iter().copied().collect();
     let b_set: alloc::collections::BTreeSet<u64> = b_values.iter().copied().collect();
@@ -442,12 +427,5 @@ fn sparse_sparse_trait_takes_fast_path_via_true_jaccard() {
     assert!(
         (trait_result - truth).abs() < 1e-15,
         "sparse-sparse trait fast path must match true Jaccard exactly on retained values"
-    );
-
-    // Also assert bit-identity to the inherent path.
-    let inherent = sa.estimate_jaccard_index(&sb);
-    assert!(
-        (trait_result - inherent).abs() < 1e-15,
-        "trait dispatch must be bit-identical to the inherent method"
     );
 }

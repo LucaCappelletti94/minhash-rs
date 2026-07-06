@@ -23,7 +23,7 @@ use crate::hasher::{Hasher, SipHashes13};
 use crate::hashtype::HashType;
 use crate::maximal::Maximal;
 use crate::min_hasher::{MinHasher, Outcome};
-use crate::minhash::{check_hash_stream, fold_hash_stream_into, MinHash};
+use crate::minhash::{check_hash_stream, dense_jaccard, fold_hash_stream_into, MinHash};
 use crate::primitive::{Primitive, SparseFor};
 
 /// MinHash with a bottom-k sparse hash prefix that promotes to a dense
@@ -50,17 +50,18 @@ pub struct SparseHashes<
     const PERMUTATIONS: usize,
     H: Hasher = SipHashes13,
     Hash: HashType = u64,
+    Value = u64,
 > where
     Word: SparseFor<Hash>,
     Hash: Primitive<Word>,
 {
-    inner: MinHash<Word, PERMUTATIONS, H, Hash>,
+    inner: MinHash<Word, PERMUTATIONS, H, Hash, Value>,
 }
 
 // ─── Debug / Clone / Copy ───────────────────────────────────────────────────
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> core::fmt::Debug
-    for SparseHashes<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> core::fmt::Debug
+    for SparseHashes<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: SparseFor<Hash> + core::fmt::Debug,
     Hash: Primitive<Word>,
@@ -72,8 +73,8 @@ where
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> Clone
-    for SparseHashes<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> Clone
+    for SparseHashes<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: SparseFor<Hash> + Clone,
     Hash: Primitive<Word>,
@@ -83,8 +84,8 @@ where
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> Copy
-    for SparseHashes<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> Copy
+    for SparseHashes<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: SparseFor<Hash> + Copy,
     Hash: Primitive<Word>,
@@ -93,8 +94,8 @@ where
 
 // ─── Constructor and mode detection ─────────────────────────────────────────
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType>
-    SparseHashes<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value>
+    SparseHashes<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: SparseFor<Hash> + Copy + Maximal + PartialEq,
     Hash: Primitive<Word>,
@@ -178,8 +179,8 @@ where
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> Default
-    for SparseHashes<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> Default
+    for SparseHashes<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: SparseFor<Hash> + Copy + Maximal + PartialEq,
     Hash: Primitive<Word>,
@@ -191,55 +192,12 @@ where
 
 // ─── Insert / may_contain / densify / promote ───────────────────────────────
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType>
-    SparseHashes<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value: CoreHash>
+    SparseHashes<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: SparseFor<Hash> + Ord + Copy + Maximal + Primitive<Hash>,
     Hash: Primitive<Word>,
 {
-    /// Insert a value into the sketch. See [`Outcome`] for the return
-    /// contract.
-    pub fn insert<V: CoreHash>(&mut self, value: V) -> Outcome {
-        let digest = MinHash::<Word, PERMUTATIONS, H, Hash>::hash_value(value);
-        if self.is_sparse() {
-            self.sparse_insert_digest(digest)
-        } else {
-            fold_hash_stream_into(self.inner.as_words_mut(), digest);
-            Outcome::Inserted
-        }
-    }
-
-    /// Returns whether the sketch may contain the provided value.
-    #[must_use]
-    pub fn may_contain<V: CoreHash>(&self, value: V) -> bool {
-        let digest = MinHash::<Word, PERMUTATIONS, H, Hash>::hash_value(value);
-        if self.is_sparse() {
-            self.sparse_contains_digest(digest)
-        } else {
-            check_hash_stream(self.inner.as_words(), digest)
-        }
-    }
-
-    /// Force the sketch into dense mode in place. No-op on already-dense
-    /// sketches.
-    pub fn densify(&mut self) {
-        if !self.is_sparse() {
-            return;
-        }
-        let count = self.count();
-        let mut target: [Word; PERMUTATIONS] = [Word::maximal(); PERMUTATIONS];
-        {
-            let words = self.inner.as_words();
-            for idx in (1..=count).rev() {
-                let encoded: Word = words[idx];
-                let digest: Hash =
-                    <Word as Primitive<Hash>>::convert(encoded).wrapping_sub(Hash::ONE);
-                fold_hash_stream_into(&mut target, digest);
-            }
-        }
-        *self.inner.as_words_mut() = target;
-    }
-
     /// Iterate the distinct digests currently held, in ascending order.
     ///
     /// Returns `Some(iterator)` while the sketch is still in sparse mode,
@@ -277,27 +235,6 @@ where
         )
     }
 
-    /// Estimate the Jaccard similarity between two `SparseHashes` sketches.
-    #[must_use]
-    pub fn estimate_jaccard_index(&self, other: &Self) -> f64 {
-        if let (true, true) = (self.is_sparse(), other.is_sparse()) {
-            self.sparse_jaccard(other)
-        } else {
-            let mut a = *self;
-            let mut b = *other;
-            a.densify();
-            b.densify();
-            a.inner.estimate_jaccard_index(&b.inner)
-        }
-    }
-
-    /// Consume the sketch and return the equivalent dense [`MinHash`].
-    #[must_use]
-    pub fn into_minhash(mut self) -> MinHash<Word, PERMUTATIONS, H, Hash> {
-        self.densify();
-        self.inner
-    }
-
     // ── Private sparse helpers ─────────────────────────────────────────────
 
     fn sparse_insert_digest(&mut self, digest: Hash) -> Outcome {
@@ -310,7 +247,7 @@ where
         };
 
         if count >= PERMUTATIONS.saturating_sub(1) {
-            self.densify();
+            <Self as MinHasher<PERMUTATIONS>>::densify(self);
             fold_hash_stream_into(self.inner.as_words_mut(), digest);
             return Outcome::Promoted;
         }
@@ -374,19 +311,23 @@ where
 
 // ─── From<SparseHashes> for MinHash ─────────────────────────────────────────
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType>
-    From<SparseHashes<Word, PERMUTATIONS, H, Hash>> for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value: CoreHash>
+    From<SparseHashes<Word, PERMUTATIONS, H, Hash, Value>>
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: SparseFor<Hash> + Ord + Copy + Maximal + Primitive<Hash>,
-    Hash: Primitive<Word>,
+    Hash: HashType + Primitive<Word>,
 {
-    fn from(sparse: SparseHashes<Word, PERMUTATIONS, H, Hash>) -> Self {
-        sparse.into_minhash()
+    fn from(mut sparse: SparseHashes<Word, PERMUTATIONS, H, Hash, Value>) -> Self {
+        <SparseHashes<Word, PERMUTATIONS, H, Hash, Value> as MinHasher<PERMUTATIONS>>::densify(
+            &mut sparse,
+        );
+        sparse.inner
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> crate::min_hasher::sealed::Sealed
-    for SparseHashes<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value>
+    crate::min_hasher::sealed::Sealed for SparseHashes<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: SparseFor<Hash>,
     Hash: Primitive<Word>,
@@ -395,8 +336,8 @@ where
 
 // ─── MinHasher trait impl ───────────────────────────────────────────────────
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, V: CoreHash>
-    MinHasher<PERMUTATIONS, V> for SparseHashes<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value: CoreHash>
+    MinHasher<PERMUTATIONS> for SparseHashes<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: SparseFor<Hash> + Ord + Copy + Maximal + Primitive<Hash>,
     Hash: HashType + Primitive<Word>,
@@ -404,27 +345,61 @@ where
     type Word = Word;
     type Hash = Hash;
     type Hasher = H;
+    type Value = Value;
 
-    fn insert(&mut self, value: V) -> Outcome {
-        SparseHashes::insert(self, value)
+    fn insert(&mut self, value: Value) -> Outcome {
+        let digest = MinHash::<Word, PERMUTATIONS, H, Hash, Value>::hash_value(value);
+        if self.is_sparse() {
+            self.sparse_insert_digest(digest)
+        } else {
+            fold_hash_stream_into(self.inner.as_words_mut(), digest);
+            Outcome::Inserted
+        }
     }
 
-    fn may_contain(&self, value: V) -> bool {
-        SparseHashes::may_contain(self, value)
+    fn may_contain(&self, value: Value) -> bool {
+        let digest = MinHash::<Word, PERMUTATIONS, H, Hash, Value>::hash_value(value);
+        if self.is_sparse() {
+            self.sparse_contains_digest(digest)
+        } else {
+            check_hash_stream(self.inner.as_words(), digest)
+        }
     }
 
     fn densify(&mut self) {
-        SparseHashes::densify(self);
-    }
-
-    fn to_dense(&self) -> MinHash<Self::Word, PERMUTATIONS, Self::Hasher, Self::Hash> {
-        let mut cloned = *self;
-        cloned.densify();
-        cloned.inner
+        if !self.is_sparse() {
+            return;
+        }
+        let count = self.count();
+        let mut target: [Word; PERMUTATIONS] = [Word::maximal(); PERMUTATIONS];
+        {
+            let words = self.inner.as_words();
+            for idx in (1..=count).rev() {
+                let encoded: Word = words[idx];
+                let digest: Hash =
+                    <Word as Primitive<Hash>>::convert(encoded).wrapping_sub(Hash::ONE);
+                fold_hash_stream_into(&mut target, digest);
+            }
+        }
+        *self.inner.as_words_mut() = target;
     }
 
     fn estimate_jaccard_index(&self, other: &Self) -> f64 {
-        SparseHashes::estimate_jaccard_index(self, other)
+        if let (true, true) = (self.is_sparse(), other.is_sparse()) {
+            self.sparse_jaccard(other)
+        } else {
+            let dense_a: MinHash<Word, PERMUTATIONS, H, Hash, Value> = (*self).into();
+            let dense_b: MinHash<Word, PERMUTATIONS, H, Hash, Value> = (*other).into();
+            dense_jaccard::<Word, PERMUTATIONS>(dense_a.as_words(), dense_b.as_words())
+        }
+    }
+
+    fn band_hashes<const BANDS: usize>(&self) -> [u64; BANDS]
+    where
+        Self::Word: CoreHash,
+    {
+        let dense: MinHash<Word, PERMUTATIONS, H, Hash, Value> = (*self).into();
+        crate::lsh::dense_band_hashes(dense.as_words())
     }
 }
 
@@ -442,14 +417,14 @@ where
 /// assert!(sketch.may_contain(0u64));
 /// assert!(!sketch.may_contain(1_000u64));
 /// ```
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, V: CoreHash>
-    core::iter::FromIterator<V> for SparseHashes<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value: CoreHash>
+    core::iter::FromIterator<Value> for SparseHashes<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: SparseFor<Hash> + Ord + Copy + Maximal + Primitive<Hash>,
     Hash: HashType + Primitive<Word>,
 {
-    fn from_iter<I: IntoIterator<Item = V>>(iter: I) -> Self {
-        let mut sketch = SparseHashes::<Word, PERMUTATIONS, H, Hash>::new();
+    fn from_iter<I: IntoIterator<Item = Value>>(iter: I) -> Self {
+        let mut sketch = SparseHashes::<Word, PERMUTATIONS, H, Hash, Value>::new();
         let mut iter = iter.into_iter();
         for value in iter.by_ref() {
             sketch.insert(value);
@@ -458,7 +433,7 @@ where
             }
         }
         if sketch.is_dense() {
-            batched::build_into::<Word, PERMUTATIONS, H, Hash, V, _>(
+            batched::build_into::<Word, PERMUTATIONS, H, Hash, Value, _>(
                 sketch.inner.as_words_mut(),
                 iter,
             );

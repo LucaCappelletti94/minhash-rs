@@ -161,7 +161,7 @@ pub struct BandEntry {
 // ─── LshIndex ──────────────────────────────────────────────────────────────
 
 /// A compile-time banded locality-sensitive hashing index over signatures
-/// of type `K: MinHasher<PERMUTATIONS, u64>`.
+/// of type `K: MinHasher<PERMUTATIONS>`.
 ///
 /// See the [module docs](self) for the query flow and storage semantics.
 ///
@@ -176,7 +176,7 @@ pub struct BandEntry {
 /// and is directly zero-copy-friendly for `epserde` mmap loads.
 pub struct LshIndex<K, const PERMUTATIONS: usize, const BANDS: usize, S = NoStore>
 where
-    K: MinHasher<PERMUTATIONS, u64>,
+    K: MinHasher<PERMUTATIONS>,
     S: SigStore<K>,
 {
     band_starts: [u32; BANDS],
@@ -188,7 +188,7 @@ where
 
 impl<K, const PERMUTATIONS: usize, const BANDS: usize, S> LshIndex<K, PERMUTATIONS, BANDS, S>
 where
-    K: MinHasher<PERMUTATIONS, u64>,
+    K: MinHasher<PERMUTATIONS>,
     K::Word: CoreHash,
     S: SigStore<K>,
 {
@@ -286,60 +286,92 @@ where
         query: &K,
         state: &'state mut QueryState,
     ) -> &'state [Candidate] {
-        state.clear();
+        compute_candidates::<K, PERMUTATIONS, BANDS>(
+            &self.band_starts,
+            &self.band_entries,
+            query,
+            state,
+        )
+    }
+}
 
-        let query_hashes = query.band_hashes::<BANDS>();
-        for (b, &qh) in query_hashes.iter().enumerate() {
-            let band = self.band_slice(b);
-            let start = band.partition_point(|e| e.band_hash < qh);
-            let end = start + band[start..].partition_point(|e| e.band_hash == qh);
-            for entry in &band[start..end] {
-                state.scratch.push(entry.sig_id);
-            }
+// ─── Shared query helpers over the CSR data ────────────────────────────────
+
+/// Slice of the flat entry vector holding band `b`'s entries.
+#[inline]
+fn band_slice<'a, const BANDS: usize>(
+    band_starts: &[u32; BANDS],
+    band_entries: &'a [BandEntry],
+    b: usize,
+) -> &'a [BandEntry] {
+    let start = band_starts[b] as usize;
+    let end = if b + 1 < BANDS {
+        band_starts[b + 1] as usize
+    } else {
+        band_entries.len()
+    };
+    &band_entries[start..end]
+}
+
+/// Query a compressed sparse row band layout for candidates that
+/// collide with `query`, ranked by descending collision count then
+/// ascending id.
+///
+/// The `LshIndex::candidates` method and any mmap-loaded
+/// `LshIndexRepr::DeserType` share this body, so a caller can query an
+/// mmap-loaded index by passing the deserialised `band_starts` array
+/// and the `band_entries` slice directly.
+pub fn compute_candidates<'state, K, const PERMUTATIONS: usize, const BANDS: usize>(
+    band_starts: &[u32; BANDS],
+    band_entries: &[BandEntry],
+    query: &K,
+    state: &'state mut QueryState,
+) -> &'state [Candidate]
+where
+    K: MinHasher<PERMUTATIONS>,
+    K::Word: CoreHash,
+{
+    state.clear();
+
+    let query_hashes = query.band_hashes::<BANDS>();
+    for (b, &qh) in query_hashes.iter().enumerate() {
+        let band = band_slice::<BANDS>(band_starts, band_entries, b);
+        let start = band.partition_point(|e| e.band_hash < qh);
+        let end = start + band[start..].partition_point(|e| e.band_hash == qh);
+        for entry in &band[start..end] {
+            state.scratch.push(entry.sig_id);
         }
-
-        state.scratch.sort_unstable();
-        let mut i = 0;
-        while i < state.scratch.len() {
-            let id = state.scratch[i];
-            let mut count = 0u32;
-            while i < state.scratch.len() && state.scratch[i] == id {
-                count += 1;
-                i += 1;
-            }
-            state.candidates.push(Candidate {
-                id,
-                collision_count: count,
-            });
-        }
-
-        state
-            .candidates
-            .sort_unstable_by(|a, b| match b.collision_count.cmp(&a.collision_count) {
-                Ordering::Equal => a.id.cmp(&b.id),
-                other => other,
-            });
-
-        &state.candidates
     }
 
-    /// Slice of the flat entry vector holding band `b`'s entries.
-    #[inline]
-    fn band_slice(&self, b: usize) -> &[BandEntry] {
-        let start = self.band_starts[b] as usize;
-        let end = if b + 1 < BANDS {
-            self.band_starts[b + 1] as usize
-        } else {
-            self.band_entries.len()
-        };
-        &self.band_entries[start..end]
+    state.scratch.sort_unstable();
+    let mut i = 0;
+    while i < state.scratch.len() {
+        let id = state.scratch[i];
+        let mut count = 0u32;
+        while i < state.scratch.len() && state.scratch[i] == id {
+            count += 1;
+            i += 1;
+        }
+        state.candidates.push(Candidate {
+            id,
+            collision_count: count,
+        });
     }
+
+    state
+        .candidates
+        .sort_unstable_by(|a, b| match b.collision_count.cmp(&a.collision_count) {
+            Ordering::Equal => a.id.cmp(&b.id),
+            other => other,
+        });
+
+    &state.candidates
 }
 
 #[cfg(feature = "rayon")]
 impl<K, const PERMUTATIONS: usize, const BANDS: usize, S> LshIndex<K, PERMUTATIONS, BANDS, S>
 where
-    K: MinHasher<PERMUTATIONS, u64> + Send + Sync,
+    K: MinHasher<PERMUTATIONS> + Send + Sync,
     K::Word: CoreHash,
     S: SigStore<K>,
 {
@@ -420,11 +452,109 @@ where
     }
 }
 
+// ─── Serialisable representation ───────────────────────────────────────────
+
+/// Serialisable snapshot of an [`LshIndex`]'s CSR band tables plus
+/// signature count. Available when the `epserde` feature is enabled.
+///
+/// The entries container is a generic parameter `E` rather than a fixed
+/// `Vec<BandEntry>` so `epserde`'s derive picks the zero-copy
+/// ε-deserialisation path for that field. On the owned instantiation
+/// `E = Vec<BandEntry>`; after `mmap` the deserialisation type is
+/// `LshIndexRepr<&'a [BandEntry], BANDS>` where the slice points
+/// directly into the mapped file. Query on a mmap-loaded index only
+/// pages in the entries the query touches.
+///
+/// Round-trip via [`LshIndex::into_repr`] and [`LshIndex::from_repr`].
+#[cfg_attr(feature = "epserde", derive(epserde::Epserde))]
+#[derive(Debug, Clone)]
+pub struct LshIndexRepr<E = Vec<BandEntry>, const BANDS: usize = 16> {
+    /// Start offset of each band's slice inside `band_entries`.
+    pub band_starts: [u32; BANDS],
+    /// Flattened per-band entries, concatenated in band order and
+    /// sorted by `band_hash` within each band's slice. Owned as a
+    /// `Vec<BandEntry>` before save, borrowed as `&[BandEntry]` on the
+    /// mmap-loaded form.
+    pub band_entries: E,
+    /// Number of signatures the index was built over.
+    pub len: u32,
+}
+
+impl<E, const BANDS: usize> LshIndexRepr<E, BANDS>
+where
+    E: AsRef<[BandEntry]>,
+{
+    /// Query this representation for candidates that collide with
+    /// `query` in at least one band, ranked by descending collision
+    /// count then ascending id. Works uniformly on the owned form
+    /// (`E = Vec<BandEntry>`) and the mmap-loaded form
+    /// (`E = &[BandEntry]`).
+    pub fn candidates<'state, K, const PERMUTATIONS: usize>(
+        &self,
+        query: &K,
+        state: &'state mut QueryState,
+    ) -> &'state [Candidate]
+    where
+        K: MinHasher<PERMUTATIONS>,
+        K::Word: CoreHash,
+    {
+        compute_candidates::<K, PERMUTATIONS, BANDS>(
+            &self.band_starts,
+            self.band_entries.as_ref(),
+            query,
+            state,
+        )
+    }
+
+    /// Number of signatures indexed. Owned field, cheap on both forms.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    /// `true` when no signatures are indexed.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl<K, const PERMUTATIONS: usize, const BANDS: usize> LshIndex<K, PERMUTATIONS, BANDS, NoStore>
+where
+    K: MinHasher<PERMUTATIONS>,
+{
+    /// Consume the index and return its serialisable representation.
+    /// Available on the `NoStore` variant only, because signature
+    /// storage cannot be moved into the persistent form without also
+    /// serialising each sketch.
+    #[must_use]
+    pub fn into_repr(self) -> LshIndexRepr<Vec<BandEntry>, BANDS> {
+        LshIndexRepr {
+            band_starts: self.band_starts,
+            band_entries: self.band_entries,
+            len: self.len,
+        }
+    }
+
+    /// Take ownership of `repr`'s CSR fields and reconstitute an index.
+    /// The result is a `NoStore` index.
+    #[must_use]
+    pub fn from_repr(repr: LshIndexRepr<Vec<BandEntry>, BANDS>) -> Self {
+        Self {
+            band_starts: repr.band_starts,
+            band_entries: repr.band_entries,
+            signatures: (),
+            len: repr.len,
+            _marker: PhantomData,
+        }
+    }
+}
+
 // ─── Store-only methods ────────────────────────────────────────────────────
 
 impl<K, const PERMUTATIONS: usize, const BANDS: usize> LshIndex<K, PERMUTATIONS, BANDS, Store>
 where
-    K: MinHasher<PERMUTATIONS, u64>,
+    K: MinHasher<PERMUTATIONS>,
     K::Word: CoreHash,
 {
     /// Return the stored signature for `id`.

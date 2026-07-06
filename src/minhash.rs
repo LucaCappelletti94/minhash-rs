@@ -63,8 +63,13 @@ use crate::primitive::Primitive;
 #[allow(clippy::unsafe_derive_deserialize)]
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "Word: Serialize", deserialize = "Word: Deserialize<'de>"))]
-pub struct MinHash<Word, const PERMUTATIONS: usize, H: Hasher = SipHashes13, Hash: HashType = u64>
-where
+pub struct MinHash<
+    Word,
+    const PERMUTATIONS: usize,
+    H: Hasher = SipHashes13,
+    Hash: HashType = u64,
+    Value = u64,
+> where
     Hash: Primitive<Word>,
 {
     #[serde(with = "BigArray")]
@@ -75,12 +80,15 @@ where
 
     #[serde(skip)]
     _hash: PhantomData<Hash>,
+
+    #[serde(skip)]
+    _phantom_value: PhantomData<Value>,
 }
 
 // ─── Debug / Clone / Copy ───────────────────────────────────────────────────
 
-impl<Word: core::fmt::Debug, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> core::fmt::Debug
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word: core::fmt::Debug, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value>
+    core::fmt::Debug for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -91,8 +99,8 @@ where
     }
 }
 
-impl<Word: Clone, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> Clone
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word: Clone, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> Clone
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -101,12 +109,13 @@ where
             words: self.words.clone(),
             _hasher: PhantomData,
             _hash: PhantomData,
+            _phantom_value: PhantomData,
         }
     }
 }
 
-impl<Word: Copy, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> Copy
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word: Copy, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> Copy
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -114,8 +123,8 @@ where
 
 // ─── PartialEq / Eq / core::hash::Hash ──────────────────────────────────────
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> PartialEq
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> PartialEq
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: PartialEq,
     Hash: Primitive<Word>,
@@ -125,16 +134,16 @@ where
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> Eq
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> Eq
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: Eq,
     Hash: Primitive<Word>,
 {
 }
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> CoreHash
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> CoreHash
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: CoreHash,
     Hash: Primitive<Word>,
@@ -146,8 +155,8 @@ where
 
 // ─── Default / new / from_words ─────────────────────────────────────────────
 
-impl<Word: Maximal, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> Default
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word: Maximal, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> Default
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -157,8 +166,8 @@ where
     }
 }
 
-impl<Word: Maximal, const PERMUTATIONS: usize, H: Hasher, Hash: HashType>
-    MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word: Maximal, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value>
+    MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -189,8 +198,8 @@ where
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType>
-    MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value>
+    MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -204,6 +213,7 @@ where
             words,
             _hasher: PhantomData,
             _hash: PhantomData,
+            _phantom_value: PhantomData,
         }
     }
 
@@ -230,8 +240,8 @@ where
 
 // ─── is_empty / is_full ────────────────────────────────────────────────────
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType>
-    MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value>
+    MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: Copy + PartialEq + Maximal,
     Hash: Primitive<Word>,
@@ -253,64 +263,12 @@ where
 
 // ─── Core operations ────────────────────────────────────────────────────────
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType>
-    MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value>
+    MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: Ord + Copy + Maximal + Primitive<Hash>,
     Hash: Primitive<Word>,
 {
-    /// Hash a value with the phantom hasher and narrow to `Hash`.
-    #[inline]
-    pub(crate) fn hash_value<V: CoreHash>(value: V) -> Hash {
-        let mut hasher = H::build();
-        value.hash(&mut hasher);
-        Hash::from_u64_digest(hasher.finish())
-    }
-
-    /// Insert a value into the MinHash.
-    ///
-    /// Hashes the value under the phantom hasher into a `Hash`-sized digest,
-    /// expands the digest through the per-permutation stream, and folds the
-    /// result into the signature.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use minhash_rs::prelude::*;
-    ///
-    /// let mut minhash = MinHash::<u64, 128>::new();
-    /// assert!(!minhash.may_contain(42));
-    /// minhash.insert(42);
-    /// assert!(minhash.may_contain(42));
-    /// ```
-    pub fn insert<V: CoreHash>(&mut self, value: V) {
-        let digest = Self::hash_value(value);
-        fold_hash_stream_into(&mut self.words, digest);
-    }
-
-    /// Returns whether the MinHash may contain the provided value.
-    ///
-    /// The dense hash-stream check returns `false` only when at least one
-    /// register would have been strictly smaller had `value` been inserted,
-    /// which is a proof of absence. `true` is the standard MinHash "may be
-    /// present" answer with the classical false-positive profile.
-    #[must_use]
-    pub fn may_contain<V: CoreHash>(&self, value: V) -> bool {
-        let digest = Self::hash_value(value);
-        check_hash_stream(&self.words, digest)
-    }
-
-    /// Estimate the Jaccard similarity between two dense MinHash sketches.
-    ///
-    /// Returns the fraction of matching registers, an unbiased estimator of
-    /// the Jaccard index under the classical minwise-independence
-    /// assumption. Two empty sketches (every register at [`Maximal`])
-    /// compare as `1.0` because they hold the same abstract state.
-    #[must_use]
-    pub fn estimate_jaccard_index(&self, other: &Self) -> f64 {
-        dense_jaccard::<Word, PERMUTATIONS>(&self.words, &other.words)
-    }
-
     /// Apply `self[i] = self[i].min(rhs[i])` element-wise. Kept as a tight
     /// indexed loop so LLVM auto-vectorises.
     #[inline]
@@ -318,6 +276,21 @@ where
         for i in 0..PERMUTATIONS {
             self.words[i] = self.words[i].min(rhs.words[i]);
         }
+    }
+}
+
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value: CoreHash>
+    MinHash<Word, PERMUTATIONS, H, Hash, Value>
+where
+    Word: Ord + Copy + Maximal + Primitive<Hash>,
+    Hash: Primitive<Word>,
+{
+    /// Hash a value with the phantom hasher and narrow to `Hash`.
+    #[inline]
+    pub(crate) fn hash_value(value: Value) -> Hash {
+        let mut hasher = H::build();
+        value.hash(&mut hasher);
+        Hash::from_u64_digest(hasher.finish())
     }
 }
 
@@ -443,8 +416,8 @@ pub(crate) fn dense_jaccard<Word: PartialEq, const P: usize>(a: &[Word; P], b: &
 
 // ─── Iterators and accessors ────────────────────────────────────────────────
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType>
-    MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value>
+    MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -490,8 +463,8 @@ where
 
 // ─── AsRef / AsMut / Index / IndexMut ───────────────────────────────────────
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> AsRef<[Word]>
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> AsRef<[Word]>
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -500,8 +473,8 @@ where
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> AsMut<[Word]>
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> AsMut<[Word]>
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -510,8 +483,8 @@ where
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> Index<usize>
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> Index<usize>
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -522,8 +495,8 @@ where
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> IndexMut<usize>
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value> IndexMut<usize>
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -534,16 +507,16 @@ where
 
 // ─── MinHasher trait impl (identity) ────────────────────────────────────────
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType> crate::min_hasher::sealed::Sealed
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value: CoreHash>
+    crate::min_hasher::sealed::Sealed for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: Ord + Copy + Maximal + Primitive<Hash>,
     Hash: HashType + Primitive<Word>,
 {
 }
 
-impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, V: CoreHash>
-    MinHasher<PERMUTATIONS, V> for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H: Hasher, Hash: HashType, Value: CoreHash>
+    MinHasher<PERMUTATIONS> for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: Ord + Copy + Maximal + Primitive<Hash>,
     Hash: HashType + Primitive<Word>,
@@ -551,25 +524,31 @@ where
     type Word = Word;
     type Hash = Hash;
     type Hasher = H;
+    type Value = Value;
 
-    fn insert(&mut self, value: V) -> Outcome {
-        MinHash::insert(self, value);
+    fn insert(&mut self, value: Value) -> Outcome {
+        let digest = Self::hash_value(value);
+        fold_hash_stream_into(&mut self.words, digest);
         Outcome::Inserted
     }
 
-    fn may_contain(&self, value: V) -> bool {
-        MinHash::may_contain(self, value)
+    fn may_contain(&self, value: Value) -> bool {
+        let digest = Self::hash_value(value);
+        check_hash_stream(&self.words, digest)
     }
 
     fn densify(&mut self) {
         // A `MinHash` is always dense.
     }
 
-    fn to_dense(&self) -> MinHash<Self::Word, PERMUTATIONS, Self::Hasher, Self::Hash> {
-        *self
+    fn estimate_jaccard_index(&self, other: &Self) -> f64 {
+        dense_jaccard::<Word, PERMUTATIONS>(&self.words, &other.words)
     }
 
-    fn estimate_jaccard_index(&self, other: &Self) -> f64 {
-        MinHash::estimate_jaccard_index(self, other)
+    fn band_hashes<const BANDS: usize>(&self) -> [u64; BANDS]
+    where
+        Self::Word: CoreHash,
+    {
+        crate::lsh::dense_band_hashes(&self.words)
     }
 }

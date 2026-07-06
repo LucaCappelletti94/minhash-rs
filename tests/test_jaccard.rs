@@ -53,8 +53,8 @@ where
 {
     let start = std::time::Instant::now();
 
-    let minhash1: MinHash<Word, PERMUTATIONS> = first_set.iter().collect();
-    let minhash2: MinHash<Word, PERMUTATIONS> = second_set.iter().collect();
+    let minhash1: MinHash<Word, PERMUTATIONS> = first_set.iter().copied().collect();
+    let minhash2: MinHash<Word, PERMUTATIONS> = second_set.iter().copied().collect();
 
     let estimated_jaccard = minhash1.estimate_jaccard_index(&minhash2);
     let end = std::time::Instant::now();

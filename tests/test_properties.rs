@@ -307,7 +307,8 @@ fn prop_values_dense_equivalence<Code>(
 where
     Code: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
 {
-    let promoted = build_values::<Code>(sequence).into_minhash();
+    let promoted: MinHash<u64, PERMUTATIONS, SipHashes13, u64> =
+        build_values::<Code>(sequence).into();
     let mut dense = MinHash::<u64, PERMUTATIONS, SipHashes13, u64>::new();
     for &v in sequence {
         dense.insert(v);
@@ -322,9 +323,11 @@ fn prop_values_insertion_order_invariant<Code>(
 where
     Code: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
 {
-    let promoted_forward = build_values::<Code>(sequence).into_minhash();
+    let promoted_forward: MinHash<u64, PERMUTATIONS, SipHashes13, u64> =
+        build_values::<Code>(sequence).into();
     let reversed: alloc::vec::Vec<u64> = sequence.iter().rev().copied().collect();
-    let promoted_reversed = build_values::<Code>(&reversed).into_minhash();
+    let promoted_reversed: MinHash<u64, PERMUTATIONS, SipHashes13, u64> =
+        build_values::<Code>(&reversed).into();
     prop_assert_eq!(promoted_forward.as_ref(), promoted_reversed.as_ref());
     Ok(())
 }
@@ -356,8 +359,8 @@ where
     CodeA: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
     CodeB: DynamicCodeRead + DynamicCodeWrite + CodeLen + Copy,
 {
-    let a = build_values::<CodeA>(sequence).into_minhash();
-    let b = build_values::<CodeB>(sequence).into_minhash();
+    let a: MinHash<u64, PERMUTATIONS, SipHashes13, u64> = build_values::<CodeA>(sequence).into();
+    let b: MinHash<u64, PERMUTATIONS, SipHashes13, u64> = build_values::<CodeB>(sequence).into();
     prop_assert_eq!(a.as_ref(), b.as_ref());
     Ok(())
 }

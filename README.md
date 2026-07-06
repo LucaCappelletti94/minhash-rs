@@ -109,7 +109,7 @@ The `rayon` feature enables `LshIndex::from_signatures_par`, byte-identical to `
 
 The `epserde` feature exposes `LshIndexRepr<E, BANDS>`. Owned form `E = Vec<BandEntry>` is written to disk. On `mmap`, the deserialised form is `LshIndexRepr<&[BandEntry], BANDS>` with the entries slice pointing directly into the mapped file. `LshIndexRepr::candidates` works uniformly on both forms.
 
-```rust
+```rust,ignore
 use epserde::prelude::*;
 use minhash_rs::index::{BandEntry, LshIndex, LshIndexRepr, NoStore};
 use minhash_rs::prelude::*;

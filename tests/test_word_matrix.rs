@@ -472,7 +472,7 @@ fn sparse_hashes_matrix_full_lifecycle() {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn sparse_hashes_insert_and_promotion_across_matrix() {
-    // (u64, u64) -- insert, may_contain, promote, into_minhash, From
+    // (u64, u64) -- insert, may_contain, promote, From
     {
         let mut sh = SparseHashes::<u64, P, SipHashes13, u64>::new();
         assert!(sh.is_sparse());
@@ -518,8 +518,8 @@ fn sparse_hashes_insert_and_promotion_across_matrix() {
         // may_contain still works in dense mode.
         assert!(sh.may_contain(0u64));
 
-        // into_minhash
-        let mh: MinHash<u64, P, SipHashes13, u64> = sh.into_minhash();
+        // MinHash::from
+        let mh: MinHash<u64, P, SipHashes13, u64> = MinHash::from(sh);
         assert!(mh.may_contain(0u64));
 
         // From::from
@@ -554,7 +554,7 @@ fn sparse_hashes_insert_and_promotion_across_matrix() {
         assert!(promoted, "u32/u32 should have promoted");
         assert!(sh.is_dense());
 
-        let mh: MinHash<u32, P, SipHashes13, u32> = sh.into_minhash();
+        let mh: MinHash<u32, P, SipHashes13, u32> = MinHash::from(sh);
         assert!(mh.may_contain(0u64));
 
         let mut sh2 = SparseHashes::<u32, P, SipHashes13, u32>::new();
@@ -587,7 +587,7 @@ fn sparse_hashes_insert_and_promotion_across_matrix() {
         }
         assert!(promoted, "u64/u32 should have promoted");
 
-        let mh: MinHash<u64, P, SipHashes13, u32> = sh.into_minhash();
+        let mh: MinHash<u64, P, SipHashes13, u32> = MinHash::from(sh);
         assert!(mh.may_contain(0u64));
     }
 
@@ -615,7 +615,7 @@ fn sparse_hashes_insert_and_promotion_across_matrix() {
         }
         assert!(promoted, "usize/u32 should have promoted");
 
-        let mh: MinHash<usize, P, SipHashes13, u32> = sh.into_minhash();
+        let mh: MinHash<usize, P, SipHashes13, u32> = MinHash::from(sh);
         assert!(mh.may_contain(0u64));
     }
 
@@ -643,7 +643,7 @@ fn sparse_hashes_insert_and_promotion_across_matrix() {
         }
         assert!(promoted, "usize/u64 should have promoted");
 
-        let mh: MinHash<usize, P, SipHashes13, u64> = sh.into_minhash();
+        let mh: MinHash<usize, P, SipHashes13, u64> = MinHash::from(sh);
         assert!(mh.may_contain(0u64));
     }
 }
@@ -771,21 +771,17 @@ fn sparse_hashes_minhasher_trait_via_fully_qualified() {
     let mut sh = SparseHashes::<u64, P, SipHashes13, u64>::new();
 
     // <SparseHashes as MinHasher>::insert
-    let outcome =
-        <SparseHashes<u64, P, SipHashes13, u64> as MinHasher<P, u64>>::insert(&mut sh, 42u64);
+    let outcome = <SparseHashes<u64, P, SipHashes13, u64> as MinHasher<P>>::insert(&mut sh, 42u64);
     assert!(matches!(outcome, Outcome::Inserted));
 
     // <SparseHashes as MinHasher>::may_contain
-    assert!(<SparseHashes<u64, P, SipHashes13, u64> as MinHasher<
-        P,
-        u64,
-    >>::may_contain(&sh, 42u64));
+    assert!(<SparseHashes<u64, P, SipHashes13, u64> as MinHasher<P>>::may_contain(&sh, 42u64));
 
     // <SparseHashes as MinHasher>::densify converts sparse digests to dense.
-    <SparseHashes<u64, P, SipHashes13, u64> as MinHasher<P, u64>>::densify(&mut sh);
+    <SparseHashes<u64, P, SipHashes13, u64> as MinHasher<P>>::densify(&mut sh);
     assert!(sh.is_dense());
 
-    // <SparseHashes as MinHasher>::to_dense
-    let dense = <SparseHashes<u64, P, SipHashes13, u64> as MinHasher<P, u64>>::to_dense(&sh);
+    // MinHash::from converts a densified SparseHashes to MinHash
+    let dense: MinHash<u64, P, SipHashes13, u64> = MinHash::from(sh);
     assert!(dense.may_contain(42u64));
 }

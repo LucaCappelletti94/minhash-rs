@@ -24,11 +24,12 @@ pub struct MinHashArray<
     const N: usize,
     H: Hasher = SipHashes13,
     Hash: HashType = u64,
+    Value = u64,
 > where
     Hash: Primitive<Word>,
 {
     #[serde(with = "BigArray")]
-    counters: [MinHash<Word, PERMUTATIONS, H, Hash>; N],
+    counters: [MinHash<Word, PERMUTATIONS, H, Hash, Value>; N],
 }
 
 impl<
@@ -37,7 +38,8 @@ impl<
         const N: usize,
         H: Hasher,
         Hash: HashType,
-    > core::fmt::Debug for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+        Value,
+    > core::fmt::Debug for MinHashArray<Word, PERMUTATIONS, N, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -48,8 +50,8 @@ where
     }
 }
 
-impl<Word: Clone, const PERMUTATIONS: usize, const N: usize, H: Hasher, Hash: HashType> Clone
-    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+impl<Word: Clone, const PERMUTATIONS: usize, const N: usize, H: Hasher, Hash: HashType, Value> Clone
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
@@ -60,15 +62,15 @@ where
     }
 }
 
-impl<Word: Copy, const PERMUTATIONS: usize, const N: usize, H: Hasher, Hash: HashType> Copy
-    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+impl<Word: Copy, const PERMUTATIONS: usize, const N: usize, H: Hasher, Hash: HashType, Value> Copy
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash, Value>
 where
     Hash: Primitive<Word>,
 {
 }
 
-impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash> PartialEq
-    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash, Value> PartialEq
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash, Value>
 where
     Word: Ord + Copy + Maximal + PartialEq + Primitive<Hash>,
     H: Hasher,
@@ -82,8 +84,8 @@ where
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash> Eq
-    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash, Value> Eq
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash, Value>
 where
     Word: Ord + Copy + Maximal + PartialEq + Primitive<Hash>,
     H: Hasher,
@@ -91,8 +93,8 @@ where
 {
 }
 
-impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash> Default
-    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash, Value> Default
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash, Value>
 where
     Word: Maximal,
     H: Hasher,
@@ -103,8 +105,8 @@ where
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash>
-    MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash, Value>
+    MinHashArray<Word, PERMUTATIONS, N, H, Hash, Value>
 where
     Word: Maximal,
     H: Hasher,
@@ -119,21 +121,21 @@ where
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash> Index<usize>
-    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash, Value> Index<usize>
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash, Value>
 where
     H: Hasher,
     Hash: HashType + Primitive<Word>,
 {
-    type Output = MinHash<Word, PERMUTATIONS, H, Hash>;
+    type Output = MinHash<Word, PERMUTATIONS, H, Hash, Value>;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.counters[index]
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash> IndexMut<usize>
-    for MinHashArray<Word, PERMUTATIONS, N, H, Hash>
+impl<Word, const PERMUTATIONS: usize, const N: usize, H, Hash, Value> IndexMut<usize>
+    for MinHashArray<Word, PERMUTATIONS, N, H, Hash, Value>
 where
     H: Hasher,
     Hash: HashType + Primitive<Word>,

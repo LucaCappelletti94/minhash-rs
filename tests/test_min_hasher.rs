@@ -48,16 +48,15 @@ fn build_sparse_hashes_pair(
 }
 
 #[test]
-fn minhash_dense_dense_trait_matches_inherent() {
-    let (a, b, _truth) = build_dense_pair(
+fn minhash_dense_dense_trait_jaccard_is_accurate() {
+    let (a, b, truth) = build_dense_pair(
         &(0..100).collect::<alloc::vec::Vec<_>>(),
         &(50..150).collect::<alloc::vec::Vec<_>>(),
     );
-    let trait_result = <MinHash<u64, 128> as MinHasher<128, u64>>::estimate_jaccard_index(&a, &b);
-    let inherent_result = a.estimate_jaccard_index(&b);
+    let result = <MinHash<u64, 128> as MinHasher<128>>::estimate_jaccard_index(&a, &b);
     assert!(
-        (trait_result - inherent_result).abs() < 1e-15,
-        "trait path must be bit-identical to inherent path for dense-dense"
+        (result - truth).abs() < 0.15,
+        "dense-dense trait Jaccard estimate must be within tolerance of true value"
     );
 }
 
@@ -75,8 +74,7 @@ fn sparse_hashes_sparse_sparse_trait_takes_fast_path() {
     assert!(sa.is_sparse(), "left sketch must remain sparse");
     assert!(sb.is_sparse(), "right sketch must remain sparse");
 
-    let trait_result =
-        <SparseHashes<u64, 128> as MinHasher<128, u64>>::estimate_jaccard_index(&sa, &sb);
+    let trait_result = <SparseHashes<u64, 128> as MinHasher<128>>::estimate_jaccard_index(&sa, &sb);
 
     let a_set: alloc::collections::BTreeSet<u64> = a_values.iter().copied().collect();
     let b_set: alloc::collections::BTreeSet<u64> = b_values.iter().copied().collect();
@@ -86,15 +84,6 @@ fn sparse_hashes_sparse_sparse_trait_takes_fast_path() {
     assert!(
         (trait_result - truth).abs() < 1e-9,
         "sparse fast path must match true Jaccard within collision floor"
-    );
-
-    // Also assert the trait method reaches the same value as the inherent
-    // method: they must be bit-identical because the trait body delegates
-    // straight to the inherent.
-    let inherent_result = sa.estimate_jaccard_index(&sb);
-    assert!(
-        (trait_result - inherent_result).abs() < 1e-15,
-        "trait dispatch must be bit-identical to the inherent method"
     );
 }
 
@@ -108,8 +97,7 @@ fn sparse_hashes_densified_trait_via_dense_oracle() {
     assert!(sa.is_dense(), "left must be dense after densify");
     assert!(sb.is_dense(), "right must be dense after densify");
 
-    let trait_result =
-        <SparseHashes<u64, 128> as MinHasher<128, u64>>::estimate_jaccard_index(&sa, &sb);
+    let trait_result = <SparseHashes<u64, 128> as MinHasher<128>>::estimate_jaccard_index(&sa, &sb);
     let da: MinHash<u64, 128> = sa.into();
     let db: MinHash<u64, 128> = sb.into();
     let dense_oracle = da.estimate_jaccard_index(&db);
@@ -127,11 +115,11 @@ fn minhasher_trait_may_contain_dispatches_for_minhash() {
     let mut mh = MinHash::<u64, 128>::new();
     let inserted: alloc::vec::Vec<u64> = (0u64..30).collect();
     for &v in &inserted {
-        <MinHash<u64, 128> as MinHasher<128, u64>>::insert(&mut mh, v);
+        <MinHash<u64, 128> as MinHasher<128>>::insert(&mut mh, v);
     }
     for &v in &inserted {
         assert!(
-            <MinHash<u64, 128> as MinHasher<128, u64>>::may_contain(&mh, v),
+            <MinHash<u64, 128> as MinHasher<128>>::may_contain(&mh, v),
             "trait may_contain must return true for inserted value {v}"
         );
     }
@@ -145,27 +133,27 @@ fn minhasher_trait_may_contain_dispatches_for_minhash() {
     let empty = MinHash::<u64, 128>::new();
     for v in 0u64..64 {
         assert!(
-            !<MinHash<u64, 128> as MinHasher<128, u64>>::may_contain(&empty, v),
+            !<MinHash<u64, 128> as MinHasher<128>>::may_contain(&empty, v),
             "may_contain on an empty sketch must be false for value {v}"
         );
     }
 }
 
 #[test]
-fn minhash_trait_to_dense_returns_populated_sketch_not_default() {
-    // Defends the `<MinHash as MinHasher>::to_dense -> Default::default()`
-    // mutant. The trait impl on `MinHash` is the identity (`*self`), so
-    // the result must equal the input, and it must not equal the fresh
-    // default sketch when the input was populated.
+#[allow(clippy::useless_conversion)]
+fn minhash_from_identity_returns_input_sketch() {
+    // Defends the `From<MinHash> for MinHash` identity path: converting
+    // a populated MinHash through From must return the same sketch, not
+    // the default (empty) sketch.
     let mh: MinHash<u64, 128> = (0u64..30).collect();
-    let trait_dense = <MinHash<u64, 128> as MinHasher<128, u64>>::to_dense(&mh);
+    let converted = MinHash::from(mh);
     assert_eq!(
-        trait_dense, mh,
-        "MinHash trait to_dense must be the identity, not Default::default()"
+        converted, mh,
+        "MinHash::from must be the identity, not Default::default()"
     );
     let default = MinHash::<u64, 128>::default();
     assert_ne!(
-        trait_dense, default,
-        "MinHash trait to_dense on a populated sketch must not return the default (empty) sketch"
+        converted, default,
+        "MinHash::from on a populated sketch must not return the default (empty) sketch"
     );
 }

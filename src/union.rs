@@ -11,8 +11,8 @@ use crate::primitive::Primitive;
 // MinHash stores per-permutation minimums, so element-wise `min` of two
 // sketches yields the sketch of the union of the underlying sets.
 
-impl<Word, H, const PERMUTATIONS: usize, Hash> BitOrAssign<&Self>
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, H, const PERMUTATIONS: usize, Hash, Value> BitOrAssign<&Self>
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: Ord + Copy + Maximal + Primitive<Hash>,
     H: Hasher,
@@ -23,8 +23,8 @@ where
     }
 }
 
-impl<Word, H, const PERMUTATIONS: usize, Hash> BitOrAssign<Self>
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, H, const PERMUTATIONS: usize, Hash, Value> BitOrAssign<Self>
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: Ord + Copy + Maximal + Primitive<Hash>,
     H: Hasher,
@@ -36,7 +36,8 @@ where
 }
 
 #[allow(clippy::return_self_not_must_use)]
-impl<Word, H, const PERMUTATIONS: usize, Hash> BitOr<&Self> for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, H, const PERMUTATIONS: usize, Hash, Value> BitOr<&Self>
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: Ord + Copy + Maximal + Primitive<Hash>,
     H: Hasher,
@@ -52,7 +53,8 @@ where
 }
 
 #[allow(clippy::return_self_not_must_use)]
-impl<Word, H, const PERMUTATIONS: usize, Hash> BitOr<Self> for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, H, const PERMUTATIONS: usize, Hash, Value> BitOr<Self>
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: Ord + Copy + Maximal + Primitive<Hash>,
     H: Hasher,
@@ -68,23 +70,24 @@ where
 }
 
 /// Adds [`union`](MinHashIterator::union) to iterators of MinHashes.
-pub trait MinHashIterator<Word, H, const PERMUTATIONS: usize, Hash>
+pub trait MinHashIterator<Word, H, const PERMUTATIONS: usize, Hash, Value>
 where
     H: Hasher,
     Hash: HashType + Primitive<Word>,
 {
     /// Merge every sketch in the iterator into a single union.
-    fn union(self) -> MinHash<Word, PERMUTATIONS, H, Hash>;
+    fn union(self) -> MinHash<Word, PERMUTATIONS, H, Hash, Value>;
 }
 
-impl<Word, H, const PERMUTATIONS: usize, Hash, I> MinHashIterator<Word, H, PERMUTATIONS, Hash> for I
+impl<Word, H, const PERMUTATIONS: usize, Hash, Value, I>
+    MinHashIterator<Word, H, PERMUTATIONS, Hash, Value> for I
 where
     Word: Ord + Copy + Maximal + Primitive<Hash>,
     H: Hasher,
     Hash: HashType + Primitive<Word>,
-    I: Iterator<Item = MinHash<Word, PERMUTATIONS, H, Hash>>,
+    I: Iterator<Item = MinHash<Word, PERMUTATIONS, H, Hash, Value>>,
 {
-    fn union(self) -> MinHash<Word, PERMUTATIONS, H, Hash> {
+    fn union(self) -> MinHash<Word, PERMUTATIONS, H, Hash, Value> {
         self.fold(MinHash::new(), |mut acc, item| {
             acc |= item;
             acc

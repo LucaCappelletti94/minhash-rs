@@ -78,8 +78,8 @@ where
     }
 }
 
-impl<Word, const PERMUTATIONS: usize, H, Hash> IterHashes<Word, PERMUTATIONS>
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H, Hash, Value> IterHashes<Word, PERMUTATIONS>
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: Copy + PartialEq,
     H: Hasher,
@@ -137,7 +137,8 @@ macro_rules! atomic_impls {
         }
 
         #[cfg(target_has_atomic = $has)]
-        impl<const PERMUTATIONS: usize, H, Hash> AsAtomic for MinHash<$word, PERMUTATIONS, H, Hash>
+        impl<const PERMUTATIONS: usize, H, Hash, Value> AsAtomic
+            for MinHash<$word, PERMUTATIONS, H, Hash, Value>
         where
             H: Hasher,
             Hash: HashType + Primitive<$word>,
@@ -176,7 +177,8 @@ macro_rules! atomic_impls {
         }
 
         #[cfg(target_has_atomic = $has)]
-        impl<const PERMUTATIONS: usize, H, Hash> AsAtomic for MinHash<$word, PERMUTATIONS, H, Hash>
+        impl<const PERMUTATIONS: usize, H, Hash, Value> AsAtomic
+            for MinHash<$word, PERMUTATIONS, H, Hash, Value>
         where
             H: Hasher,
             Hash: HashType + Primitive<$word>,

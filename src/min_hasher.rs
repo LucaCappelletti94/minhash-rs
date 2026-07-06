@@ -12,15 +12,14 @@
 //! (defaults to [`u64`]). Two sketches share a [`MinHasher`] impl at matching
 //! `(P, Value, Word, Hash, Hasher)` and are Jaccard-comparable through the
 //! trait; cross-variant comparisons (for example [`SparseHashes`] against
-//! [`SparseValues`]) are done explicitly by densifying both operands through
-//! [`MinHasher::to_dense`].
+//! [`SparseValues`]) are done explicitly by converting both operands to
+//! [`MinHash`] with `MinHash::from(sketch)` or `sketch.into()`.
 
 use core::hash::Hash as CoreHash;
 
 use crate::hasher::Hasher;
 use crate::hashtype::HashType;
 use crate::maximal::Maximal;
-use crate::minhash::MinHash;
 use crate::primitive::Primitive;
 
 /// Result of a single [`MinHasher::insert`] call.
@@ -50,10 +49,10 @@ pub(crate) mod sealed {
 
 /// Sealed trait implemented by every MinHash-family sketch in this crate.
 ///
-/// `P` is the number of permutations. `Value` is the input type each impl
-/// accepts. Cross-variant Jaccard is done explicitly by densifying both
-/// operands through [`MinHasher::to_dense`] and calling
-/// [`MinHasher::estimate_jaccard_index`] on the resulting dense sketches.
+/// `P` is the number of permutations. Each impl sets `type Value` to the input
+/// type it accepts. Cross-variant Jaccard is done explicitly by converting both
+/// operands to [`MinHash`] with `MinHash::from(sketch)` or `sketch.into()` and
+/// calling [`MinHasher::estimate_jaccard_index`] on the resulting dense sketches.
 ///
 /// External types cannot implement this trait, because it is sealed via a
 /// private supertrait. The following implementation is rejected at compile
@@ -64,40 +63,39 @@ pub(crate) mod sealed {
 ///
 /// struct External;
 ///
-/// impl MinHasher<128, u64> for External {
+/// impl MinHasher<128> for External {
 ///     type Word = u64;
 ///     type Hash = u64;
 ///     type Hasher = SipHashes13;
+///     type Value = u64;
 ///     fn insert(&mut self, _value: u64) -> Outcome { Outcome::Inserted }
 ///     fn may_contain(&self, _value: u64) -> bool { false }
 ///     fn densify(&mut self) {}
-///     fn to_dense(&self) -> MinHash<u64, 128> { MinHash::new() }
 ///     fn estimate_jaccard_index(&self, _other: &Self) -> f64 { 0.0 }
 /// }
 /// ```
-pub trait MinHasher<const P: usize, Value: CoreHash = u64>: sealed::Sealed + Sized {
+pub trait MinHasher<const P: usize>: sealed::Sealed + Sized {
     /// Storage word type for the dense signature.
     type Word: Ord + Copy + Maximal + Primitive<Self::Hash>;
     /// Internal hash-stream width.
     type Hash: HashType + Primitive<Self::Word>;
     /// Phantom hasher marker (e.g. `SipHashes13`, `Fnv`).
     type Hasher: Hasher;
+    /// Input value type each impl accepts.
+    type Value: CoreHash;
 
     /// Insert a value into the sketch. See [`Outcome`] for the return
     /// contract.
-    fn insert(&mut self, value: Value) -> Outcome;
+    fn insert(&mut self, value: Self::Value) -> Outcome;
 
     /// Return `true` if the sketch may contain `value`. Dense sketches
     /// inherit the classical MinHash false-positive profile. Sparse wrappers
     /// are exact while still sparse.
-    fn may_contain(&self, value: Value) -> bool;
+    fn may_contain(&self, value: Self::Value) -> bool;
 
     /// Force the sketch into its dense representation in place. No-op on
     /// sketches already dense.
     fn densify(&mut self);
-
-    /// Materialise a dense [`MinHash`] equivalent to the current state.
-    fn to_dense(&self) -> MinHash<Self::Word, P, Self::Hasher, Self::Hash>;
 
     /// Estimate the Jaccard similarity between two sketches of the same
     /// variant.
@@ -105,8 +103,8 @@ pub trait MinHasher<const P: usize, Value: CoreHash = u64>: sealed::Sealed + Siz
     /// Sparse-mode wrappers take the exact bottom-`P` merge when both
     /// operands are still under capacity, and fall through to the classical
     /// dense register-agreement fraction otherwise. Cross-variant
-    /// comparisons are done by densifying both operands with
-    /// [`MinHasher::to_dense`] first.
+    /// comparisons are done by converting both operands to [`MinHash`] with
+    /// `MinHash::from(sketch)` or `sketch.into()` first.
     ///
     /// # Examples
     ///
@@ -117,7 +115,7 @@ pub trait MinHasher<const P: usize, Value: CoreHash = u64>: sealed::Sealed + Siz
     ///
     /// let a: SparseHashes<u64, 128> = (0u64..30).collect();
     /// let b: SparseHashes<u64, 128> = (15u64..45).collect();
-    /// let j = <SparseHashes<u64, 128> as MinHasher<128, u64>>::estimate_jaccard_index(&a, &b);
+    /// let j = <SparseHashes<u64, 128> as MinHasher<128>>::estimate_jaccard_index(&a, &b);
     /// assert!((j - 15.0 / 45.0).abs() < 1e-9);
     /// ```
     ///
@@ -151,7 +149,7 @@ pub trait MinHasher<const P: usize, Value: CoreHash = u64>: sealed::Sealed + Siz
     ///
     /// let sparse: SparseHashes<u64, 128> = (0u64..30).collect();
     /// let trait_bands: [u64; 16] =
-    ///     <SparseHashes<u64, 128> as MinHasher<128, u64>>::band_hashes::<16>(&sparse);
+    ///     <SparseHashes<u64, 128> as MinHasher<128>>::band_hashes::<16>(&sparse);
     /// let dense: MinHash<u64, 128> = sparse.into();
     /// let inherent_bands = dense.band_hashes::<16>();
     /// assert_eq!(trait_bands, inherent_bands);
@@ -159,8 +157,5 @@ pub trait MinHasher<const P: usize, Value: CoreHash = u64>: sealed::Sealed + Siz
     #[must_use]
     fn band_hashes<const BANDS: usize>(&self) -> [u64; BANDS]
     where
-        Self::Word: CoreHash,
-    {
-        self.to_dense().band_hashes::<BANDS>()
-    }
+        Self::Word: CoreHash;
 }

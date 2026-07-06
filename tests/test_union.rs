@@ -19,7 +19,7 @@ fn set(range: std::ops::RangeInclusive<u64>) -> HashSet<u64> {
 }
 
 fn sketch(values: &HashSet<u64>) -> MinHash<u64, PERMUTATIONS> {
-    values.iter().collect()
+    values.iter().copied().collect()
 }
 
 #[test]

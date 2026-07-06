@@ -9,11 +9,11 @@ use crate::maximal::Maximal;
 use crate::minhash::MinHash;
 use crate::primitive::Primitive;
 
-impl<Word, A, H, const PERMUTATIONS: usize, Hash> core::iter::FromIterator<A>
-    for MinHash<Word, PERMUTATIONS, H, Hash>
+impl<Word, const PERMUTATIONS: usize, H, Hash, Value> core::iter::FromIterator<Value>
+    for MinHash<Word, PERMUTATIONS, H, Hash, Value>
 where
     Word: Ord + Copy + Maximal + Primitive<Hash>,
-    A: CoreHash,
+    Value: CoreHash,
     H: Hasher,
     Hash: HashType + Primitive<Word>,
 {
@@ -42,9 +42,9 @@ where
     ///     assert!(minhash.may_contain(item));
     /// }
     /// ```
-    fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
+    fn from_iter<T: IntoIterator<Item = Value>>(iter: T) -> Self {
         let mut sig = Self::new();
-        batched::build_into::<Word, PERMUTATIONS, H, Hash, A, _>(sig.as_words_mut(), iter);
+        batched::build_into::<Word, PERMUTATIONS, H, Hash, Value, _>(sig.as_words_mut(), iter);
         sig
     }
 }

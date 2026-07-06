@@ -105,8 +105,8 @@ fn sparse_hashes_equivalence<const P: usize>() {
             reference.insert(v);
         }
 
-        let batched_dense: MinHash<u64, P> = batched.into_minhash();
-        let reference_dense: MinHash<u64, P> = reference.into_minhash();
+        let batched_dense: MinHash<u64, P> = MinHash::from(batched);
+        let reference_dense: MinHash<u64, P> = MinHash::from(reference);
         assert_eq!(
             batched_dense.as_words(),
             reference_dense.as_words(),
@@ -137,8 +137,8 @@ fn sparse_values_equivalence<const P: usize>() {
             reference.insert(v);
         }
 
-        let batched_dense: MinHash<u64, P> = batched.into_minhash();
-        let reference_dense: MinHash<u64, P> = reference.into_minhash();
+        let batched_dense: MinHash<u64, P> = MinHash::from(batched);
+        let reference_dense: MinHash<u64, P> = MinHash::from(reference);
         assert_eq!(
             batched_dense.as_words(),
             reference_dense.as_words(),
@@ -157,56 +157,56 @@ fn sparse_values_p128_from_iter_matches_insert_loop() {
     sparse_values_equivalence::<128>();
 }
 
-// ─── into_minhash against MinHash::from_iter ────────────────────────────────
+// ─── From against MinHash::from_iter ───────────────────────────────────────
 
-fn sparse_hashes_into_minhash<const P: usize>() {
+fn sparse_hashes_from_matches_minhash_from_iter<const P: usize>() {
     for &size in &SIZES {
         let values = gen_values(size, 42);
 
         let sparse: SparseHashes<u64, P> = values.iter().copied().collect();
-        let from_sparse: MinHash<u64, P> = sparse.into_minhash();
+        let from_sparse: MinHash<u64, P> = MinHash::from(sparse);
 
         let direct: MinHash<u64, P> = values.iter().copied().collect();
         assert_eq!(
             from_sparse.as_words(),
             direct.as_words(),
-            "SparseHashes<u64, {P}>::into_minhash must equal MinHash::from_iter at size {size}"
+            "MinHash::from(SparseHashes<u64, {P}>) must equal MinHash::from_iter at size {size}"
         );
     }
 }
 
 #[test]
-fn sparse_hashes_p64_into_minhash_equals_minhash_from_iter() {
-    sparse_hashes_into_minhash::<64>();
+fn sparse_hashes_p64_from_equals_minhash_from_iter() {
+    sparse_hashes_from_matches_minhash_from_iter::<64>();
 }
 
 #[test]
-fn sparse_hashes_p128_into_minhash_equals_minhash_from_iter() {
-    sparse_hashes_into_minhash::<128>();
+fn sparse_hashes_p128_from_equals_minhash_from_iter() {
+    sparse_hashes_from_matches_minhash_from_iter::<128>();
 }
 
-fn sparse_values_into_minhash<const P: usize>() {
+fn sparse_values_from_matches_minhash_from_iter<const P: usize>() {
     for &size in &SIZES {
         let values = gen_values(size, 42);
 
         let sparse: SparseValues<P> = values.iter().copied().collect();
-        let from_sparse: MinHash<u64, P> = sparse.into_minhash();
+        let from_sparse: MinHash<u64, P> = MinHash::from(sparse);
 
         let direct: MinHash<u64, P> = values.iter().copied().collect();
         assert_eq!(
             from_sparse.as_words(),
             direct.as_words(),
-            "SparseValues<{P}>::into_minhash must equal MinHash::from_iter at size {size}"
+            "MinHash::from(SparseValues<{P}>) must equal MinHash::from_iter at size {size}"
         );
     }
 }
 
 #[test]
-fn sparse_values_p64_into_minhash_equals_minhash_from_iter() {
-    sparse_values_into_minhash::<64>();
+fn sparse_values_p64_from_equals_minhash_from_iter() {
+    sparse_values_from_matches_minhash_from_iter::<64>();
 }
 
 #[test]
-fn sparse_values_p128_into_minhash_equals_minhash_from_iter() {
-    sparse_values_into_minhash::<128>();
+fn sparse_values_p128_from_equals_minhash_from_iter() {
+    sparse_values_from_matches_minhash_from_iter::<128>();
 }

@@ -4,12 +4,6 @@ use core::hash::{Hash as CoreHash, Hasher};
 
 use fnv::FnvHasher;
 
-use crate::hasher::Hasher as MinHashHasher;
-use crate::hashtype::HashType;
-use crate::maximal::Maximal;
-use crate::minhash::MinHash;
-use crate::primitive::Primitive;
-
 /// FNV-1a hash of a band of MinHash registers.
 ///
 /// The `LSH` (locality-sensitive hashing) banding technique breaks a signature
@@ -30,6 +24,24 @@ pub fn band_hash<Word: CoreHash>(band: &[Word]) -> u64 {
         register.hash(&mut hasher);
     }
     hasher.finish()
+}
+
+/// Split a dense signature into `BANDS` bands and FNV-1a hash each.
+///
+/// Extracted as a free helper so the [`crate::min_hasher::MinHasher`] trait
+/// default `band_hashes` can call it without recursing through the trait
+/// method itself.
+pub(crate) fn dense_band_hashes<Word: CoreHash, const P: usize, const BANDS: usize>(
+    words: &[Word; P],
+) -> [u64; BANDS] {
+    const {
+        assert!(
+            BANDS >= 1 && P % BANDS == 0,
+            "band_hashes: BANDS must be at least 1 and must evenly divide PERMUTATIONS",
+        );
+    }
+    let rows = P / BANDS;
+    core::array::from_fn(|band| band_hash(&words[band * rows..(band + 1) * rows]))
 }
 
 /// Iterator over band indices where two arrays of band hashes agree.
@@ -78,98 +90,5 @@ impl<const BANDS: usize> Iterator for BandMatches<'_, BANDS> {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         (0, Some(BANDS.saturating_sub(self.idx)))
-    }
-}
-
-/// Generic helper carrying the compile-time assertion for
-/// [`MinHash::band_hashes`]. Enforcing the bound with an associated const on
-/// a dedicated struct lets it depend on both `PERMUTATIONS` (from the
-/// sketch) and `BANDS` (from the method), which a plain method-level assert
-/// cannot reach on stable Rust before 1.79's inline `const` blocks.
-struct AssertBandsDivide<const PERMUTATIONS: usize, const BANDS: usize>;
-
-impl<const PERMUTATIONS: usize, const BANDS: usize> AssertBandsDivide<PERMUTATIONS, BANDS> {
-    const OK: () = assert!(
-        BANDS >= 1 && PERMUTATIONS % BANDS == 0,
-        "band_hashes: BANDS must be at least 1 and must evenly divide PERMUTATIONS"
-    );
-}
-
-impl<Word, const PERMUTATIONS: usize, H, Hash> MinHash<Word, PERMUTATIONS, H, Hash>
-where
-    Word: CoreHash + Ord + Copy + Maximal + Primitive<Hash>,
-    H: MinHashHasher,
-    Hash: HashType + Primitive<Word>,
-{
-    /// Band hashes of this signature: `BANDS` consecutive bands of
-    /// `PERMUTATIONS / BANDS` registers each.
-    ///
-    /// `BANDS` must be at least `1` and must evenly divide `PERMUTATIONS`,
-    /// enforced at compile time by an associated-const assertion. `BANDS`
-    /// out of range (zero, larger than `PERMUTATIONS`, or non-divisor)
-    /// used to silently produce meaningless output. Misuse is now a hard
-    /// `E0080` error at the call site.
-    ///
-    /// If the sketch is in sparse mode it is densified into a temporary
-    /// before hashing, so callers do not have to reason about the mode.
-    /// Because densification produces a signature bit-identical to what a
-    /// from-scratch dense sketch would have produced for the same input
-    /// set, banded LSH analysis applies under the same minwise-independence
-    /// assumptions as the dense pipeline, regardless of whether the sketch
-    /// entered dense mode by direct insertion or by promotion from sparse.
-    /// The exact `Pr[band collision] = J^r` law of Broder / Indyk-Motwani
-    /// holds under an idealized random-permutation family; the crate's
-    /// SplitMix + XorShift permutation stream is a pseudo-permutation, so
-    /// downstream analysis carries the standard "assuming minwise
-    /// independence" caveat that classical MinHash LSH already carries.
-    ///
-    /// ```
-    /// use minhash_rs::prelude::*;
-    ///
-    /// let sketch: MinHash<u64, 128> = (0..100u64).collect();
-    /// let hashes = sketch.band_hashes::<16>();
-    /// assert_eq!(hashes.len(), 16);
-    /// ```
-    ///
-    /// A `BANDS` value that does not evenly divide `PERMUTATIONS` is
-    /// rejected at compile time:
-    ///
-    /// ```compile_fail
-    /// use minhash_rs::prelude::*;
-    ///
-    /// let sketch: MinHash<u64, 128> = (0..100u64).collect();
-    /// let _ = sketch.band_hashes::<13>();
-    /// ```
-    ///
-    /// A `BANDS` value larger than `PERMUTATIONS` is likewise rejected:
-    ///
-    /// ```compile_fail
-    /// use minhash_rs::prelude::*;
-    ///
-    /// let sketch: MinHash<u64, 128> = (0..100u64).collect();
-    /// let _ = sketch.band_hashes::<200>();
-    /// ```
-    ///
-    /// A zero `BANDS` value is likewise rejected:
-    ///
-    /// ```compile_fail
-    /// use minhash_rs::prelude::*;
-    ///
-    /// let sketch: MinHash<u64, 128> = (0..100u64).collect();
-    /// let _ = sketch.band_hashes::<0>();
-    /// ```
-    #[must_use]
-    pub fn band_hashes<const BANDS: usize>(&self) -> [u64; BANDS] {
-        // Force compile-time evaluation of the divisibility assertion.
-        // Without a consumer of the associated const the assertion is dead
-        // code and never fires, exactly the trap the sparse and new asserts
-        // fell into pre-fix.
-        let () = AssertBandsDivide::<PERMUTATIONS, BANDS>::OK;
-
-        // With `PERMUTATIONS % BANDS == 0` enforced, `rows` is well-defined
-        // and every register participates in exactly one band.
-        let rows = PERMUTATIONS / BANDS;
-        let registers = self.as_ref();
-        core::array::from_fn(|band| band_hash(&registers[band * rows..(band + 1) * rows]))
     }
 }

@@ -73,7 +73,11 @@ serde-big-array = "0.5"
 sketching-core = "0.1"
 dsi-bitstream = { version = "0.9", default-features = false }
 rayon = { version = "1.10", optional = true }
-epserde = { version = "0.12", optional = true, default-features = false, features = ["derive", "mmap", "std"] }
+epserde = { version = "0.12", optional = true, default-features = false, features = [
+  "derive",
+  "mmap",
+  "std",
+] }
 
 [dev-dependencies]
 criterion = "0.8"

@@ -10,12 +10,15 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Set up nightly Rust
         run: |
           rustup toolchain install nightly --component clippy
@@ -38,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install nightly with bare-metal targets
         run: |
           rustup toolchain install nightly
@@ -56,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install the minimum supported Rust version
         run: |
           rustup toolchain install 1.85.0 --profile minimal
@@ -68,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install nightly with Miri
         run: |
           rustup toolchain install nightly --component miri
@@ -84,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Set up stable Rust
         run: |
           rustup toolchain install stable --profile minimal
@@ -115,7 +118,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Set up nightly Rust
         # The hyperloglog-rs dev-dependency uses a nightly-only feature gate, so
         # the test targets cargo-mutants rebuilds only compile on nightly, as
@@ -176,7 +179,7 @@ jobs:
           --exclude-re "replace SparseValues.*count -> u32 with 1"
       - name: Upload mutants report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: mutants-report-shard-${{ matrix.shard }}
           path: mutants.out
@@ -185,7 +188,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install nightly with llvm-tools-preview
         run: |
           rustup toolchain install nightly --component llvm-tools-preview
@@ -195,7 +198,7 @@ jobs:
       - name: Generate coverage (lcov)
         run: cargo llvm-cov --lcov --output-path lcov.info
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: lcov.info

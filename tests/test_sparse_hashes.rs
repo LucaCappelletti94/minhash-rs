@@ -124,7 +124,7 @@ fn debug_output_is_nonempty_and_names_type() {
     // Defends the `Debug::fmt -> Ok(Default::default())` mutant.
     let sketch = SparseHashes::<u64, 128>::new();
     let rendered = format!("{sketch:?}");
-    assert!(!rendered.is_empty());
+    assert_ne!(rendered, "");
     assert!(
         rendered.contains("SparseHashes"),
         "Debug output should name the type, got {rendered:?}"

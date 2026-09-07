@@ -151,7 +151,7 @@ fn debug_clone_default_and_from_conversion_all_run() {
 
     // Debug: assert non-empty and contains struct name
     let debug_str = format!("{sv:?}");
-    assert!(!debug_str.is_empty());
+    assert_ne!(debug_str, "");
     assert!(debug_str.contains("SparseValues"));
 
     // Clone: assert count is preserved

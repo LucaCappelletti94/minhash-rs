@@ -61,7 +61,7 @@ fn debug_output_is_nonempty_and_names_type() {
     // one of these two asserts.
     let mh = MinHash::<u64, 8>::new();
     let rendered = format!("{mh:?}");
-    assert!(!rendered.is_empty());
+    assert_ne!(rendered, "");
     assert!(
         rendered.contains("MinHash"),
         "Debug output should name the type, got {rendered:?}"

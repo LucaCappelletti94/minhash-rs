@@ -81,7 +81,7 @@ fn derived_impls_run() {
     // Debug::fmt: assert non-empty and names the type. Defends the
     // `Debug::fmt -> Ok(Default::default())` mutant.
     let rendered = format!("{a:?}");
-    assert!(!rendered.is_empty());
+    assert_ne!(rendered, "");
     assert!(
         rendered.contains("MinHashArray"),
         "Debug output should name the type, got {rendered:?}"

@@ -22,7 +22,7 @@ fn empty_index_reports_empty() {
     let mut state = QueryState::new();
     let query: MinHash<u64, 128> = (0u64..30).collect();
     let cands = index.candidates(&query, &mut state);
-    assert!(cands.is_empty());
+    assert_eq!(cands, []);
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn candidates_ordered_by_descending_collision_count() {
     let mut state = QueryState::new();
     let cands = index.candidates(&a, &mut state);
 
-    assert!(!cands.is_empty());
+    assert_ne!(cands, []);
     assert_eq!(cands[0].id, 0);
     // Query collides with itself in every band.
     assert_eq!(cands[0].collision_count, 16);

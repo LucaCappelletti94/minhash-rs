@@ -130,7 +130,7 @@ fn top_k_sparse_values_returns_bit_exact_score_on_self_and_neighbour() {
     let mut state = QueryState::new();
     let hits = index.top_k(&query, 2, &mut state);
 
-    assert!(!hits.is_empty());
+    assert_ne!(hits, [] as [(u32, f64); 0]);
     assert_eq!(hits[0].0, 0);
     #[allow(clippy::float_cmp)]
     {
@@ -174,6 +174,6 @@ fn top_k_after_densification_still_ranks_self_match_first() {
     let index: LshIndex<_, P, BANDS, Store> = LshIndex::from_signatures([sig_a, sig_b]);
     let mut state = QueryState::new();
     let hits = index.top_k(&query_dense, 2, &mut state);
-    assert!(!hits.is_empty());
+    assert_ne!(hits, [] as [(u32, f64); 0]);
     assert_eq!(hits[0].0, 0);
 }

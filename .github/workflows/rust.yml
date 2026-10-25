@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -38,7 +38,7 @@ jobs:
         run: taplo fmt --check Cargo.toml
 
   no-std:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -56,7 +56,7 @@ jobs:
         # the core sketch must compile even when the atomic API is unavailable.
         run: cargo build --target thumbv6m-none-eabi
   msrv:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -68,7 +68,7 @@ jobs:
         run: cargo build
 
   miri:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -84,7 +84,7 @@ jobs:
         run: cargo miri test --lib --test test_atomic --test test_atomic_variants
 
   audit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -104,7 +104,7 @@ jobs:
         run: cargo audit --deny warnings --ignore RUSTSEC-2024-0436
 
   mutants:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       # Split the mutant list across parallel runners so each shard finishes
       # within any implicit runner cap. Two shards out of every eight still
@@ -185,7 +185,7 @@ jobs:
           path: mutants.out
 
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5

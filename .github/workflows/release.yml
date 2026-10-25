@@ -14,7 +14,7 @@ env:
 jobs:
   verify-version:
     name: Verify tag matches version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout
@@ -40,7 +40,7 @@ jobs:
   publish:
     name: Publish to crates.io
     needs: ci
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       id-token: write

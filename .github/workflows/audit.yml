@@ -1,0 +1,40 @@
+name: Audit
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - Cargo.lock
+      - "**/Cargo.toml"
+      - deny.toml
+      - .cargo/audit.toml
+      - .github/workflows/audit.yml
+  push:
+    branches: ["main"]
+    paths:
+      - Cargo.lock
+      - "**/Cargo.toml"
+      - deny.toml
+      - .cargo/audit.toml
+      - .github/workflows/audit.yml
+  schedule:
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Set up stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+      - name: Audit dependencies for known vulnerabilities
+        # RUSTSEC-2024-0436 flags `paste`, a transitive compile-time macro crate with no runtime attack surface.
+        run: cargo audit --deny warnings --ignore RUSTSEC-2024-0436
